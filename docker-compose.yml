@@ -1,0 +1,69 @@
+---
+services:
+    web:
+        build: ./services
+        volumes:
+            - ./services:/usr/src/app/
+            - ~/.gitconfig:/root/.gitconfig:ro
+        ports:
+            - 8000:8000
+        env_file:
+            - ./.env
+        depends_on:
+            - db
+            - redis
+            - createbuckets
+        network_mode: "host"
+
+    db:
+        image: postgres:17.5
+        ports:
+            - 5432:5432
+        volumes:
+            - postgres_data:/var/lib/postgresql/data/
+        environment:
+            - POSTGRES_USER=hello_django
+            - POSTGRES_PASSWORD=hello_django
+            - POSTGRES_DB=hello_django_dev
+
+    redis:
+        image: redis:7-alpine
+        ports:
+            - 6379:6379
+        volumes:
+            - redis_data:/data
+        command: redis-server --appendonly yes
+
+    minio:
+        image: minio/minio:latest
+        ports:
+            - "8081:8081"
+            - "8082:8082"
+        environment:
+            - MINIO_ROOT_USER=hello_django
+            - MINIO_ROOT_PASSWORD=hello_django
+            - MINIO_BROWSER_REDIRECT_URL=http://localhost:8082
+            - MINIO_SERVER_URL=http://localhost:8081
+        volumes:
+            - minio_data:/data
+        command: server /data --console-address ":8082" --address ":8081"
+
+    createbuckets:
+        image: minio/mc:latest
+        entrypoint: >
+            /bin/sh -c "
+            until mc alias set myminio http://minio:8081 hello_django hello_django 2>/dev/null; do
+              echo 'Waiting for MinIO to be ready...' && sleep 2;
+            done &&
+            mc ls myminio/static >/dev/null 2>&1 || mc mb myminio/static &&
+            mc ls myminio/media >/dev/null 2>&1 || mc mb myminio/media &&
+            mc anonymous set download myminio/static &&
+            echo 'Buckets created successfully - static is public, media is private'
+            "
+        depends_on:
+            - minio
+
+volumes:
+    postgres_data:
+    redis_data:
+    minio_data:
