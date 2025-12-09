@@ -1,0 +1,19 @@
+[project]
+name = "drf-api-template"
+version = "0.1.0"
+description = "DRF API template with necessary configurations for a production environment and developer experience"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "django>=5.2,<6.0",
+    "djangorestframework==3.16.1",
+    "django-cors-headers==4.7.0",
+    "django-allauth==65.13.1",
+    "requests==2.32.5",
+    "ggshield==1.45.0",
+    "gunicorn==23.0.0",
+    "uvicorn==0.35.0",
+    "psycopg2-binary==2.9.10",
+    "django-storages[s3]==1.14.2",
+    "minio==7.2.20"
+]
