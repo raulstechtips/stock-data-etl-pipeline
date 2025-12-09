@@ -1,0 +1,99 @@
+---
+globs: ["**/api/**"]
+description: "DRF-specific exception handling including custom exception handlers, error responses, and Django-to-DRF exception translation"
+alwaysApply: false
+---
+
+# DRF Error Handling
+
+## References
+
+- **DRF Exception Handling:** https://www.django-rest-framework.org/api-guide/exceptions/
+- **Django Error Views:** https://docs.djangoproject.com/en/stable/topics/http/views/#customizing-error-views
+
+## Custom Exception Handler
+
+```python
+from rest_framework.views import exception_handler
+from rest_framework.response import Response
+from rest_framework import status
+
+def custom_exception_handler(exc, context):
+    response = exception_handler(exc, context)
+    
+    if response is not None:
+        response.data = {
+            'error': {
+                'message': str(exc),
+                'code': response.status_code,
+                'details': response.data
+            }
+        }
+    else:
+        logger.exception("Unhandled exception in API")
+        response = Response(
+            {'error': {'message': 'Internal server error'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    return response
+
+# settings.py
+REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler',
+}
+```
+
+Reference: https://www.django-rest-framework.org/api-guide/exceptions/#custom-exception-handling
+
+## Translate Django Exceptions
+
+```python
+from rest_framework.exceptions import NotFound
+from django.core.exceptions import ObjectDoesNotExist
+
+@api_view(['GET'])
+def get_article(request, article_id):
+    try:
+        article = Article.objects.get(id=article_id)
+        return Response(ArticleSerializer(article).data)
+    except ObjectDoesNotExist:
+        raise NotFound(detail=f"Article {article_id} not found")
+```
+
+## Validation Errors
+
+```python
+@api_view(['POST'])
+def create_user(request):
+    serializer = UserSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {'error': {'message': 'Validation failed', 'details': serializer.errors}},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    serializer.save()
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+```
+
+## Custom Error Views
+
+```python
+# views.py
+def custom_404(request, exception):
+    return render(request, 'errors/404.html', status=404)
+
+def custom_500(request):
+    return render(request, 'errors/500.html', status=500)
+
+# urls.py
+handler404 = 'api.views.custom_404'
+handler500 = 'api.views.custom_500'
+```
+
+Reference: https://docs.djangoproject.com/en/stable/topics/http/views/#customizing-error-views
+
+## Cross-Reference
+
+- General error handling: @error-handling.mdc
+- DRF security: @drf-security.mdc

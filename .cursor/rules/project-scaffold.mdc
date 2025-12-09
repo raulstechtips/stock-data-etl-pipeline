@@ -1,0 +1,116 @@
+---
+alwaysApply: false
+# description: "Project-specific context for the Django application including tech stack, structure, and conventions"
+---
+
+# Project Scaffold
+
+**Purpose:** Template for project-specific context. Fill in placeholders below.
+
+## Project Overview
+
+**Project Name:** [FILL IN: e.g., Stock Data ETL Pipeline]
+
+**Description:** [FILL IN: Brief description of project purpose and goals]
+
+**Production Status:** [FILL IN: Development / Staging / Production]
+
+## Tech Stack
+
+- **Backend Framework:** Django 5.2.9
+- **API Framework:** Django REST Framework
+- **Database:** PostgreSQL (production/staging/dev), SQLite3 (test)
+- **Cache:** Redis (production/staging/dev), File-based (test)
+- **Storage:** S3/MinIO (production/staging/dev), Local (test)
+- **Python Version:** [FILL IN: e.g., 3.11+]
+- **Additional Dependencies:** [FILL IN: Key packages like Celery, channels, etc.]
+
+## Project Structure
+
+Based on `/workspace/services/`:
+
+```
+services/
+├── config/                 # Django settings, URLs, WSGI/ASGI
+│   ├── settings.py        # Environment-aware settings
+│   ├── urls.py
+│   └── middleware.py      # Custom middleware (health checks, etc.)
+├── api/                   # Main API app
+│   ├── models.py
+│   ├── views.py
+│   ├── serializers.py     # [CREATE IF USING DRF]
+│   └── urls.py            # [CREATE IF NEEDED]
+├── [app_name]/            # [FILL IN: Additional Django apps]
+├── static_project/        # Project-level static files
+├── templates/             # Django templates
+├── scripts/               # Deployment/management scripts
+└── manage.py
+```
+
+## Key Conventions
+
+### Naming
+
+- **Python files/modules:** `snake_case`
+- **Classes:** `PascalCase`
+- **Constants:** `UPPER_SNAKE_CASE`
+- **Django apps:** `singular_lowercase` (e.g., `api`, not `apis`)
+
+### Imports
+
+Order per PEP 8:
+1. Standard library
+2. Third-party packages (Django, DRF)
+3. Local application imports
+
+```python
+# Standard library
+import os
+from pathlib import Path
+
+# Third-party
+from django.db import models
+from rest_framework import serializers
+
+# Local
+from api.models import MyModel
+```
+
+### Environment Configuration
+
+- `APP_ENV` controls behavior: `dev`, `test`, `stage`, `prod`
+- All secrets via environment variables (never hardcode)
+- See `config/settings.py` for configuration patterns
+
+### File Organization
+
+- Keep models in `models.py` or `models/` package if >500 lines
+- Keep views in `views.py` or `views/` package if >500 lines
+- Serializers in `serializers.py` (DRF apps only)
+- Business logic in `services.py` or `utils.py` (not in views)
+
+## Domain-Specific Context
+
+[FILL IN: Add domain-specific terminology, business rules, or patterns unique to this project]
+
+**Example:**
+- Stock tickers follow [pattern]
+- Financial data uses [decimal precision rules]
+- ETL pipeline runs [schedule/trigger conditions]
+
+## External Integrations
+
+[FILL IN: APIs, third-party services, message queues, etc.]
+
+**Example:**
+- Alpha Vantage API for stock data
+- AWS S3 for data storage
+- Redis for caching and Celery task queue
+
+## Cross-Reference
+
+- Transaction patterns: @django-transactions.mdc
+- Security rules: @drf-security.mdc
+- Production settings: @production.mdc
+- Error handling: @error-handling.mdc
+- Code style: @python-style.mdc, @coding-practices.mdc

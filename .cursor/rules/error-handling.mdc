@@ -1,0 +1,64 @@
+---
+globs: ["**/*.py"]
+description: "Python exception handling best practices including specific exceptions, custom errors, and sensitive data filtering"
+alwaysApply: false
+---
+
+# Error Handling
+
+## References
+
+- **Python Exceptions:** https://docs.python.org/3/tutorial/errors.html
+- **Django Error Reporting:** https://docs.djangoproject.com/en/stable/howto/error-reporting/
+
+## Exception Handling
+
+### Pattern: Specific Exceptions
+
+```python
+from django.core.exceptions import ObjectDoesNotExist
+
+def get_user_profile(user_id):
+    try:
+        return UserProfile.objects.get(user_id=user_id)
+    except ObjectDoesNotExist:
+        logger.warning(f"Profile not found for user {user_id}")
+        return None
+```
+
+### Pattern: Custom Business Exceptions
+
+```python
+class InsufficientFundsError(Exception):
+    """Raised when account balance is insufficient."""
+    pass
+
+def withdraw(account_id, amount):
+    account = Account.objects.get(id=account_id)
+    if account.balance < amount:
+        raise InsufficientFundsError(f"Insufficient funds: {account.balance} < {amount}")
+    account.balance -= amount
+    account.save()
+```
+
+Reference: https://docs.python.org/3/tutorial/errors.html#user-defined-exceptions
+
+### NEVER: Catch and Ignore
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+try:
+    critical_operation()
+except Exception as e:
+    logger.exception("Critical operation failed")
+    raise
+```
+
+Reference: https://docs.djangoproject.com/en/stable/howto/error-reporting/#filtering-sensitive-information
+
+## Cross-Reference
+
+- DRF error handling: @drf-error-handling.mdc
+- Logging practices: @coding-practices.mdc

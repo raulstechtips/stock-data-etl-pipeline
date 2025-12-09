@@ -1,0 +1,191 @@
+---
+globs: ["**/test_*.py", "**/*_test.py", "**/tests/**/*.py"]
+description: "Testing patterns for Django, DRF, atomic transactions, and race conditions using TestCase, APITestCase, and pytest"
+alwaysApply: false
+---
+
+# Testing Patterns
+
+## References
+
+- **Django Testing:** https://docs.djangoproject.com/en/stable/topics/testing/
+- **DRF Testing:** https://www.django-rest-framework.org/api-guide/testing/
+- **pytest-django:** https://pytest-django.readthedocs.io/
+- **Factory Boy:** https://factoryboy.readthedocs.io/
+
+## Django Test Cases
+
+Use `TestCase` for most tests (faster, uses transactions):
+```python
+from django.test import TestCase
+
+class UserModelTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email='test@example.com', password='pass123')
+    
+    def test_user_creation(self):
+        self.assertEqual(self.user.email, 'test@example.com')
+```
+
+Use `TransactionTestCase` when testing `transaction.atomic()`:
+```python
+from django.test import TransactionTestCase
+
+class TransactionTest(TransactionTestCase):
+    def test_atomic_rollback(self):
+        pass
+```
+
+Reference: https://docs.djangoproject.com/en/stable/topics/testing/tools/#testcase
+
+## DRF API Testing
+
+Use `APITestCase` for API endpoints:
+```python
+from rest_framework.test import APITestCase
+from rest_framework import status
+from django.urls import reverse
+
+class ArticleAPITest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email='test@example.com', password='pass123')
+        self.client.force_authenticate(user=self.user)
+    
+    def test_create_article(self):
+        url = reverse('article-list')
+        data = {'title': 'Test', 'content': 'Content'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+```
+
+Test permissions:
+```python
+def test_owner_can_update(self):
+    self.client.force_authenticate(user=self.owner)
+    response = self.client.patch(url, {'title': 'Updated'})
+    self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+def test_non_owner_cannot_update(self):
+    self.client.force_authenticate(user=self.other_user)
+    response = self.client.patch(url, {'title': 'Updated'})
+    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+```
+
+Reference: https://www.django-rest-framework.org/api-guide/testing/
+
+## Testing Atomic Transactions
+
+Test rollback behavior:
+```python
+from django.test import TransactionTestCase
+from django.db import transaction
+
+class AtomicTransactionTest(TransactionTestCase):
+    def test_transaction_rollback_on_error(self):
+        initial_count = Account.objects.count()
+        
+        with self.assertRaises(ValueError):
+            with transaction.atomic():
+                Account.objects.create(balance=100)
+                raise ValueError("Forced error")
+        
+        self.assertEqual(Account.objects.count(), initial_count)
+```
+
+Reference: https://docs.djangoproject.com/en/stable/topics/testing/tools/#transactiontestcase
+
+## Testing Race Conditions
+
+Test `select_for_update()`:
+```python
+from django.test import TransactionTestCase
+from django.db import transaction
+import threading
+
+class RaceConditionTest(TransactionTestCase):
+    def test_concurrent_updates_with_locking(self):
+        account = Account.objects.create(balance=100)
+        
+        def increment_balance():
+            with transaction.atomic():
+                acc = Account.objects.select_for_update().get(id=account.id)
+                acc.balance += 10
+                acc.save()
+        
+        threads = [threading.Thread(target=increment_balance) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        account.refresh_from_db()
+        self.assertEqual(account.balance, 150)
+```
+
+Test F() atomicity:
+```python
+from django.db.models import F
+
+def test_f_expression_atomic_update(self):
+    article = Article.objects.create(view_count=100)
+    
+    for _ in range(10):
+        Article.objects.filter(id=article.id).update(view_count=F('view_count') + 1)
+    
+    article.refresh_from_db()
+    self.assertEqual(article.view_count, 110)
+```
+
+## Factory Boy
+
+Use Factory Boy for complex test objects:
+```python
+import factory
+from factory.django import DjangoModelFactory
+
+class UserFactory(DjangoModelFactory):
+    class Meta:
+        model = User
+    
+    email = factory.Sequence(lambda n: f'user{n}@example.com')
+    is_active = True
+
+class OrderFactory(DjangoModelFactory):
+    class Meta:
+        model = Order
+    
+    user = factory.SubFactory(UserFactory)
+    total = Decimal('100.00')
+
+# Usage
+order = OrderFactory(status='paid')
+```
+
+Reference: https://factoryboy.readthedocs.io/
+
+## Mocking External Services
+
+Mock HTTP requests:
+```python
+from unittest.mock import patch, Mock
+
+class ExternalAPITest(TestCase):
+    @patch('api.services.requests.get')
+    def test_fetch_data(self, mock_get):
+        mock_response = Mock()
+        mock_response.json.return_value = {'price': 150.25}
+        mock_get.return_value = mock_response
+        
+        service = StockService()
+        price = service.fetch_price('AAPL')
+        
+        self.assertEqual(price, 150.25)
+```
+
+Reference: https://docs.python.org/3/library/unittest.mock.html
+
+## Cross-Reference
+
+- Transaction testing: @django-transactions.mdc
+- DRF security testing: @drf-security.mdc
+- Error handling testing: @error-handling.mdc, @drf-error-handling.mdc

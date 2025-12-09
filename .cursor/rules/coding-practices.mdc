@@ -1,0 +1,90 @@
+---
+globs: ["**/*.py"]
+description: "Logging, documentation, Django-specific patterns (Service layer, Model Managers and Queryset optimization), constants"
+alwaysApply: false
+---
+# Coding Practices
+
+## References
+
+- **Python Logging:** https://docs.python.org/3/howto/logging.html
+- **Django Logging:** https://docs.djangoproject.com/en/stable/topics/logging/
+- **Django Managers:** https://docs.djangoproject.com/en/stable/topics/db/managers/
+- **Django QuerySets:** https://docs.djangoproject.com/en/stable/ref/models/querysets/
+
+## Logging
+
+1. Log at appropriate levels:
+- `DEBUG`: Detailed diagnostic info (development only)
+- `INFO`: Normal operation events
+- `WARNING`: Unusual but handled events
+- `ERROR`: Failures requiring attention
+- `CRITICAL`: System-level failures
+
+2. Structured logging with extra context
+
+3. AVOID print statements - use logger instead.
+
+Reference: https://docs.python.org/3/howto/logging.html
+
+## Django Patterns
+
+### Service Layer
+
+Separate business logic from views:
+```python
+# services/order_service.py
+class OrderService:
+    def create_order(self, user: User, items: List[Dict]) -> Order:
+        self._validate_items(items)
+        total = self._calculate_total(items)
+        return Order.objects.create(user=user, total=total)
+
+# views.py
+service = OrderService()
+order = service.create_order(request.user, items)
+```
+
+### Model Managers
+
+Encapsulate query logic:
+```python
+class ActiveManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True)
+
+class Article(models.Model):
+    objects = models.Manager()
+    active = ActiveManager()
+```
+
+Reference: https://docs.djangoproject.com/en/stable/topics/db/managers/
+
+### QuerySet Optimization
+
+Use `select_related` for ForeignKey:
+```python
+orders = Order.objects.select_related('user').all()
+```
+
+Use `prefetch_related` for reverse ForeignKey/ManyToMany:
+```python
+users = User.objects.prefetch_related('orders').all()
+```
+
+Reference: https://docs.djangoproject.com/en/stable/ref/models/querysets/#select-related
+
+## Constants
+
+PREFER named constants over magic numbers:
+```python
+FREE_SHIPPING_THRESHOLD = Decimal('100.00')
+MAX_LOGIN_ATTEMPTS = 3
+
+if order.total > FREE_SHIPPING_THRESHOLD:
+    apply_free_shipping(order)
+```
+
+
+## Cross-Reference
+- Python style: @python-style.mdc

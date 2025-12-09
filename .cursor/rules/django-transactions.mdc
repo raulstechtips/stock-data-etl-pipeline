@@ -1,0 +1,169 @@
+---
+globs: ["**/*.py"]
+description: "Atomic database operations, race condition prevention, and deadlock prevention for Django applications"
+alwaysApply: false
+---
+
+# Django Transactions & Concurrency
+
+## References
+
+- **Django Transactions:** https://docs.djangoproject.com/en/stable/topics/db/transactions/
+- **F expressions:** https://docs.djangoproject.com/en/stable/ref/models/expressions/#f-expressions
+- **select_for_update:** https://docs.djangoproject.com/en/stable/ref/models/querysets/#select-for-update
+- **PostgreSQL Locking:** https://www.postgresql.org/docs/current/explicit-locking.html
+
+## Atomic Operations
+
+### Pattern: transaction.atomic()
+
+Decorator for multiple operations:
+```python
+from django.db import transaction
+
+@transaction.atomic
+def transfer_funds(from_id, to_id, amount):
+    from_account = Account.objects.get(id=from_id)
+    to_account = Account.objects.get(id=to_id)
+    from_account.balance -= amount
+    to_account.balance += amount
+    from_account.save()
+    to_account.save()
+```
+
+Context manager:
+```python
+with transaction.atomic():
+    order.status = 'processing'
+    order.save()
+    OrderLog.objects.create(order=order, status='processing')
+```
+
+### Rule: Keep Transactions Short
+
+MUST:
+- Keep atomic blocks under 100ms
+- Only database operations inside atomic blocks
+
+NEVER:
+- HTTP requests, file I/O, emails, or external APIs inside transactions
+
+## Race Condition Prevention
+
+### Pattern: F() for Simple Updates (Preferred)
+
+Atomic at database level, no lock needed:
+
+```python
+from django.db.models import F
+
+Article.objects.filter(id=article_id).update(
+    view_count=F('view_count') + 1
+)
+```
+
+Conditional updates:
+```python
+updated = Inventory.objects.filter(
+    product_id=product_id,
+    quantity__gte=order_quantity
+).update(quantity=F('quantity') - order_quantity)
+
+if updated == 0:
+    raise InsufficientInventoryError()
+```
+
+Reference: https://docs.djangoproject.com/en/stable/ref/models/expressions/#f-expressions
+
+### Pattern: select_for_update() for Complex Operations
+
+Use when you need to read data and make decisions:
+
+```python
+@transaction.atomic
+def process_withdrawal(account_id, amount):
+    account = Account.objects.select_for_update().get(id=account_id)
+    if account.balance < amount:
+        raise InsufficientFundsError()
+    account.balance -= amount
+    account.save()
+```
+
+Fail fast with nowait:
+```python
+@transaction.atomic
+def try_reserve_seat(seat_id):
+    try:
+        seat = Seat.objects.select_for_update(nowait=True).get(id=seat_id)
+        if seat.status == 'available':
+            seat.status = 'reserved'
+            seat.save()
+            return True
+    except OperationalError:
+        return False
+```
+
+Reference: https://docs.djangoproject.com/en/stable/ref/models/querysets/#select-for-update
+
+### Rule: Filter Before Locking
+
+```python
+with transaction.atomic():
+    accounts = Account.objects.filter(
+        status='active',
+        balance__gt=0
+    ).select_for_update()
+```
+
+## Savepoints
+
+```python
+@transaction.atomic
+def process_batch(items):
+    for item in items:
+        try:
+            with transaction.atomic():
+                process_item(item)
+        except Exception:
+            log_failed_item(item)
+            continue
+```
+
+Reference: https://docs.djangoproject.com/en/stable/topics/db/transactions/#savepoints
+
+## Deadlock Prevention
+
+### Rule: Consistent Resource Ordering
+
+Always access tables/rows in same order across transactions:
+
+```python
+with transaction.atomic():
+    account = Account.objects.select_for_update().get(id=account_id)
+    txn = Transaction.objects.select_for_update().get(id=txn_id)
+```
+
+## Database Constraints
+
+Enforce invariants at database level:
+
+```python
+from django.db.models import CheckConstraint, Q
+
+class Account(models.Model):
+    balance = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    class Meta:
+        constraints = [
+            CheckConstraint(
+                check=Q(balance__gte=0),
+                name='balance_non_negative'
+            )
+        ]
+```
+
+Reference: https://docs.djangoproject.com/en/stable/ref/models/constraints/
+
+## Cross-Reference
+
+- Error handling: @error-handling.mdc
