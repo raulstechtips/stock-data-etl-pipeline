@@ -1,0 +1,123 @@
+---
+alwaysApply: false
+---
+# Production Configuration
+
+## References
+
+- **Django Security:** https://docs.djangoproject.com/en/stable/topics/security/
+- **Django Deployment:** https://docs.djangoproject.com/en/stable/howto/deployment/checklist/
+- **DRF Throttling:** https://www.django-rest-framework.org/api-guide/throttling/
+- **CORS Headers:** https://github.com/adamchainz/django-cors-headers
+
+## HTTPS Configuration
+
+```python
+# settings.py
+if APP_ENV in ["prod", "stage"]:
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+```
+
+Reference: https://docs.djangoproject.com/en/stable/topics/security/#ssl-https
+
+## CORS Configuration
+
+Whitelist specific origins only:
+
+```python
+# settings.py
+CORS_ALLOWED_ORIGINS = [
+    'https://example.com',
+    'https://app.example.com',
+]
+CORS_ALLOW_CREDENTIALS = True
+```
+
+Reference: https://github.com/adamchainz/django-cors-headers
+
+## Rate Limiting
+
+```python
+# settings.py
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour',
+    },
+}
+```
+
+Custom throttle classes:
+
+```python
+from rest_framework.throttling import UserRateThrottle
+
+class BurstRateThrottle(UserRateThrottle):
+    scope = 'burst'
+
+# settings.py
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_RATES': {
+        'burst': '60/min',
+        'sustained': '1000/day',
+    },
+}
+```
+
+Reference: https://www.django-rest-framework.org/api-guide/throttling/
+
+## CSRF Protection
+
+```python
+# settings.py
+CSRF_USE_SESSIONS = False  # Token in cookie for AJAX
+CSRF_COOKIE_HTTPONLY = False  # JS needs to read token
+CSRF_COOKIE_SECURE = True  # HTTPS only in production
+CSRF_COOKIE_SAMESITE = 'None' if APP_ENV in ["prod", "stage"] else 'Lax'
+```
+
+Reference: https://docs.djangoproject.com/en/stable/ref/csrf/
+
+## Security Headers
+
+```python
+# settings.py
+if APP_ENV in ["prod", "stage"]:
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+```
+
+## DEBUG and ALLOWED_HOSTS
+
+```python
+# settings.py
+DEBUG = APP_ENV not in ["prod", "stage"]
+
+if APP_ENV in ["prod", "stage"]:
+    ALLOWED_HOSTS = [
+        host.strip() 
+        for host in os.environ.get('ALLOWED_HOSTS', '').split(',') 
+        if host.strip()
+    ]
+else:
+    ALLOWED_HOSTS = ["*"]
+```
+
+Reference: https://docs.djangoproject.com/en/stable/ref/settings/#debug
+
+## Cross-Reference
+
+- Security patterns: @drf-security.mdc
+- Error handling: @error-handling.mdc
+- Project configuration: @project-scaffold.mdc

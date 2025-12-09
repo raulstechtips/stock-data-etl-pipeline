@@ -1,0 +1,153 @@
+---
+globs: ["**/api/**"]
+description: "Authentication, permissions, input validation, and SQL injection prevention for Django REST Framework APIs"
+alwaysApply: false
+---
+
+# DRF Security
+
+## References
+
+- **DRF Security:** https://www.django-rest-framework.org/topics/security/
+- **OWASP API Security Top 10:** https://owasp.org/API-Security/
+- **DRF Authentication:** https://www.django-rest-framework.org/api-guide/authentication/
+- **DRF Permissions:** https://www.django-rest-framework.org/api-guide/permissions/
+- **Django Security:** https://docs.djangoproject.com/en/stable/topics/security/
+
+## Authentication
+
+### MUST: Require Authentication by Default
+
+```python
+# settings.py
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+```
+
+### MUST: Explicitly Mark Public Endpoints
+
+```python
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_endpoint(request):
+    return Response({'status': 'public'})
+```
+
+Reference: https://www.django-rest-framework.org/api-guide/permissions/#allowany
+
+## Authorization
+
+### MUST: Use Permission Classes
+
+```python
+class ArticleViewSet(viewsets.ModelViewSet):
+    ...
+    permission_classes = [IsAuthenticated]
+```
+
+### MUST: Implement Object-Level Permissions
+
+```python
+class IsOwnerOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return obj.owner == request.user
+```
+
+Reference: https://www.django-rest-framework.org/api-guide/permissions/#custom-permissions
+
+## Input Validation
+
+### MUST: Validate All Input with Serializers
+
+```python
+from rest_framework import serializers
+
+class UserRegistrationSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(min_length=8, write_only=True)
+    
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered")
+        return value
+```
+
+### NEVER: Trust Client Input
+
+```python
+@api_view(['POST'])
+def create_user(request):
+    serializer = UserSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+```
+
+Reference: https://www.django-rest-framework.org/api-guide/serializers/#validation
+
+## SQL Injection Prevention
+
+### MUST: Use Django ORM
+
+Django ORM automatically parameterizes queries:
+
+```python
+User.objects.filter(email=user_input)
+```
+
+For raw SQL, use parameterized queries:
+
+```python
+from django.db import connection
+cursor = connection.cursor()
+cursor.execute("SELECT * FROM users WHERE email = %s", [user_input])
+```
+
+Reference: https://docs.djangoproject.com/en/stable/topics/security/#sql-injection-protection
+
+## Sensitive Data
+
+### MUST: Exclude Sensitive Fields
+
+
+### MUST: Use write_only for Passwords
+
+```python
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+```
+
+## Sensitive Data Filtering
+
+### MUST: Filter Sensitive Data from Error Reports
+
+```python
+from django.views.decorators.debug import sensitive_variables, sensitive_post_parameters
+
+@sensitive_variables('password', 'credit_card')
+def process_payment(user_id, password, credit_card):
+    pass
+
+@sensitive_post_parameters('password', 'api_key')
+def login_view(request):
+    pass
+```
+
+Reference: https://www.django-rest-framework.org/api-guide/serializers/#specifying-read-only-fields
+
+## Cross-Reference
+
+- Production settings: @production.mdc
+- DRF error handling: @drf-error-handling.mdc

@@ -1,0 +1,79 @@
+---
+globs: ["**/*.py"]
+description: "Python code style guidelines following Google Python Style Guide, type hints, and SOLID principles with flexible enforcement"
+alwaysApply: false
+---
+
+# Python Style
+
+## References
+
+- **Google Python Style Guide:** https://google.github.io/styleguide/pyguide.html
+- **PEP 484 (Type Hints):** https://peps.python.org/pep-0484/
+- **PEP 257 (Docstrings):** https://peps.python.org/pep-0257/
+- **SOLID Principles:** https://en.wikipedia.org/wiki/SOLID
+
+## Formatting
+
+PREFER:
+- 4 spaces indentation
+- 80 characters line length
+- Imports: standard library, third-party, local
+
+Reference: https://google.github.io/styleguide/pyguide.html#s3-python-style-rules
+
+## Naming Conventions
+
+PREFER:
+- `snake_case` for functions and variables
+- `PascalCase` for classes
+- `UPPER_SNAKE_CASE` for constants
+- `_leading_underscore` for internal/private
+
+Reference: https://google.github.io/styleguide/pyguide.html#s3.16-naming
+
+## Type Hints
+
+PREFER type annotations for public APIs:
+
+```python
+from typing import Optional, List, Dict
+from decimal import Decimal
+
+def calculate_discount(
+    price: Decimal,
+    discount_percent: float,
+    max_discount: Optional[Decimal] = None
+) -> Decimal:
+    discount = price * (discount_percent / 100)
+    if max_discount and discount > max_discount:
+        discount = max_discount
+    return price - discount
+```
+
+Reference: https://peps.python.org/pep-0484/
+
+## SOLID Principles
+
+PREFER:
+- Single Responsibility: One class, one reason to change
+- Composition over inheritance
+- Early returns over nested conditionals
+
+Reference: https://en.wikipedia.org/wiki/SOLID
+
+## Best Practices
+
+PREFER:
+- Context managers for resources (`with` statements)
+- Simple list/dict comprehensions
+- Docstrings for public APIs
+
+AVOID:
+- Global variables
+
+## Cross-Reference
+
+- Django patterns: @django-transactions.mdc
+- Code organization: @coding-practices.mdc
+- Error handling: @error-handling.mdc
