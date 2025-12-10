@@ -27,7 +27,7 @@ Templates for Django-integrated microservices that run in separate containers:
 Reference a template in your chat with the `@` symbol:
 
 ```
-@.cursor/prompts/bug-fix.mdc
+@.cursor/prompts/bug-fix.md
 
 component_name: "TaskSerializer"
 bug_description: "Tasks with null due_date cause serialization error"
@@ -40,7 +40,7 @@ The AI assistant will follow the template's structure and examples to help solve
 ## Template Catalog
 
 ### 🐛 Bug Fix Template
-**File**: `bug-fix.mdc`  
+**File**: `bug-fix.md`  
 **Category**: Debugging  
 **Purpose**: Systematic approach to identifying, fixing, and validating bugs in Django/DRF applications
 
@@ -61,7 +61,7 @@ The AI assistant will follow the template's structure and examples to help solve
 ---
 
 ### ✨ Feature Implementation Template
-**File**: `feature.mdc`  
+**File**: `feature.md`  
 **Category**: Development  
 **Purpose**: Structured approach to implementing new features following Django/DRF best practices
 
@@ -79,7 +79,7 @@ The AI assistant will follow the template's structure and examples to help solve
 
 **Example**:
 ```
-@.cursor/prompts/feature.mdc
+@.cursor/prompts/feature.md
 
 feature_name: "Task Tagging System"
 requirements: "Users should be able to add multiple tags to tasks. Tags can be reused across tasks."
@@ -90,7 +90,7 @@ affected_modules: "models, serializers, API endpoints"
 ---
 
 ### 📚 Documentation Template
-**File**: `documentation.mdc`  
+**File**: `documentation.md`  
 **Category**: Documentation  
 **Purpose**: Generate high-quality documentation for code, APIs, and project components
 
@@ -108,7 +108,7 @@ affected_modules: "models, serializers, API endpoints"
 
 **Example**:
 ```
-@.cursor/prompts/documentation.mdc
+@.cursor/prompts/documentation.md
 
 target: "TaskService.complete_task method"
 doc_type: "code"
@@ -119,7 +119,7 @@ include_examples: true
 ---
 
 ### 🧪 Test Writing Template
-**File**: `test-writing.mdc`  
+**File**: `test-writing.md`  
 **Category**: Testing  
 **Purpose**: Write comprehensive tests for Django/DRF applications with proper coverage
 
@@ -136,7 +136,7 @@ include_examples: true
 
 **Example**:
 ```
-@.cursor/prompts/test-writing.mdc
+@.cursor/prompts/test-writing.md
 
 component_name: "TaskService"
 test_type: "service"
@@ -193,9 +193,9 @@ offset timezones"
 You can reference multiple templates in sequence:
 
 ```
-1. Use feature.mdc to implement the feature
-2. Use test-writing.mdc to add comprehensive tests
-3. Use documentation.mdc to document the new feature
+1. Use feature.md to implement the feature
+2. Use test-writing.md to add comprehensive tests
+3. Use documentation.md to document the new feature
 ```
 
 ### When NOT to Use Templates
@@ -210,13 +210,13 @@ Templates are designed for structured, repeatable workflows. Don't use them for:
 
 These prompt templates work alongside the project's `.cursor/rules/` files:
 
-- **coding-practices.mdc**: Logging, Django patterns, service layer
-- **django-transactions.mdc**: Atomic operations, race conditions
-- **drf-error-handling.mdc**: Exception handling in DRF
-- **drf-security.mdc**: Authentication, permissions, validation
-- **error-handling.mdc**: Python exception best practices
-- **python-style.mdc**: Code style, type hints, SOLID principles
-- **testing-patterns.mdc**: Testing best practices
+- **coding-practices**: Logging, Django patterns, service layer
+- **django-transactions**: Atomic operations, race conditions
+- **drf-error-handling**: Exception handling in DRF
+- **drf-security**: Authentication, permissions, validation
+- **error-handling**: Python exception best practices
+- **python-style**: Code style, type hints, SOLID principles
+- **testing-patterns**: Testing best practices
 
 The AI assistant automatically references relevant rules when using templates. You don't need to explicitly mention them.
 
@@ -224,7 +224,7 @@ The AI assistant automatically references relevant rules when using templates. Y
 
 To add a new template:
 
-1. **Create a new `.mdc` file** in this directory
+1. **Create a new `.md` file** in this directory
 2. **Follow the standard structure**:
    - YAML front-matter with name, category, description, version, variables
    - Markdown sections: Context, Instructions, Constraints, Examples, Expected Output
@@ -232,8 +232,8 @@ To add a new template:
 4. **Update this README** to add your template to the catalog
 
 ### Template Naming Convention
-- Use lowercase with hyphens: `my-template.mdc`
-- Make names descriptive: `api-endpoint.mdc` not `endpoint.mdc`
+- Use lowercase with hyphens: `my-template.md`
+- Make names descriptive: `api-endpoint.md` not `endpoint.md`
 - Keep names concise: 2-3 words maximum
 
 ## Tips for Effective Use
@@ -249,7 +249,7 @@ To add a new template:
 ### Example 1: Fixing a Serializer Bug
 
 ```
-@.cursor/prompts/bug-fix.mdc
+@.cursor/prompts/bug-fix.md
 
 component_name: "TaskSerializer"
 bug_description: "When creating a task with tags, the tags field accepts tag IDs 
@@ -263,7 +263,7 @@ error_message: "Task matching query does not exist"
 ### Example 2: Implementing a New Feature
 
 ```
-@.cursor/prompts/feature.mdc
+@.cursor/prompts/feature.md
 
 feature_name: "Task Priority System"
 requirements: "Add priority field to tasks (low, medium, high, critical). Users 
@@ -276,7 +276,7 @@ affected_modules: "Task model, TaskSerializer, TaskViewSet, migrations"
 ### Example 3: Writing API Documentation
 
 ```
-@.cursor/prompts/documentation.mdc
+@.cursor/prompts/documentation.md
 
 target: "Tasks API endpoints (list, create, retrieve, update, delete, complete)"
 doc_type: "api"
@@ -287,7 +287,7 @@ include_examples: true
 ### Example 4: Writing Comprehensive Tests
 
 ```
-@.cursor/prompts/test-writing.mdc
+@.cursor/prompts/test-writing.md
 
 component_name: "TaskViewSet"
 test_type: "api"
@@ -312,10 +312,10 @@ For non-API components like background workers, CLI tools, scheduled jobs, and P
 
 ### Project Rules
 These templates work alongside project rules in `.cursor/rules/`:
-- `coding-practices.mdc` - Django patterns, logging
-- `django-transactions.mdc` - Atomic operations
-- `drf-error-handling.mdc` - DRF exception handling
-- `drf-security.mdc` - API security
-- `python-style.mdc` - Code style guidelines
-- `testing-patterns.mdc` - Test best practices
+- `coding-practices` - Django patterns, logging
+- `django-transactions` - Atomic operations
+- `drf-error-handling` - DRF exception handling
+- `drf-security` - API security
+- `python-style` - Code style guidelines
+- `testing-patterns` - Test best practices
 
