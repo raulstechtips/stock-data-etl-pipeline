@@ -69,7 +69,7 @@ INSTALLED_APPS = [
     # "allauth.headless",  # Headless API for JSON-based authentication
 
     # Project apps
-
+    "api",
 ]
 
 MIDDLEWARE = [
