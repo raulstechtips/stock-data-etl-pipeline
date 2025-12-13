@@ -175,6 +175,20 @@ class StockIngestionRun(models.Model):
         indexes = [
             models.Index(fields=['stock', '-created_at'], name='idx_run_stock_created_at'),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['stock'],
+                condition=models.Q(state__in=[
+                    IngestionState.QUEUED_FOR_FETCH,
+                    IngestionState.FETCHING,
+                    IngestionState.FETCHED,
+                    IngestionState.QUEUED_FOR_SPARK,
+                    IngestionState.SPARK_RUNNING,
+                    IngestionState.SPARK_FINISHED,
+                ]),
+                name='unique_active_run_per_stock'
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.stock.ticker} - {self.state} ({self.id})"

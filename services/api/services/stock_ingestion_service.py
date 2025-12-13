@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from api.models import IngestionState, Stock, StockIngestionRun
@@ -286,9 +286,6 @@ class StockIngestionService:
         # Get or create the stock
         stock, stock_created = self.get_or_create_stock(ticker_upper)
         
-        # Lock the stock row for update to prevent race conditions
-        stock = Stock.objects.select_for_update().get(id=stock.id)
-        
         # Check for existing active run
         latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
         
@@ -303,19 +300,28 @@ class StockIngestionService:
         if request_id is None:
             request_id = timezone.now().strftime('%Y%m%d%H%M%S%f')
         
-        # Create new ingestion run
-        now = timezone.now()
-        new_run = StockIngestionRun.objects.create(
-            stock=stock,
-            state=IngestionState.QUEUED_FOR_FETCH,
-            requested_by=requested_by,
-            request_id=request_id,
-            queued_for_fetch_at=now,
-        )
-        
-        logger.info(
-            f"Created new ingestion run for {ticker_upper}: "
-            f"run_id={new_run.id}, request_id={request_id}"
-        )
-        
-        return new_run, True
+        # Create new run - may raise IntegrityError if constraint violated
+        try:
+            now = timezone.now()
+            new_run = StockIngestionRun.objects.create(
+                stock=stock,
+                state=IngestionState.QUEUED_FOR_FETCH,
+                requested_by=requested_by,
+                request_id=request_id,
+                queued_for_fetch_at=now,
+            )
+            
+            logger.info(
+                f"Created new ingestion run for {ticker_upper}: "
+                f"run_id={new_run.id}, request_id={request_id}"
+            )
+            return new_run, True
+        except IntegrityError:
+            latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
+            if latest_run and latest_run.is_in_progress:
+                logger.warning(
+                    f"Race condition detected: Active run exists for {ticker_upper}: state={latest_run.state}, "
+                    f"run_id={latest_run.id}"
+                )
+                return latest_run, False
+            raise
