@@ -105,7 +105,7 @@ class StockIngestionRunManager(models.Manager):
         """
         return (
             self.select_related('stock')
-            .filter(stock__ticker=ticker.upper())
+            .filter(stock__ticker=ticker.strip().upper())
             .order_by('-created_at')
             .first()
         )
