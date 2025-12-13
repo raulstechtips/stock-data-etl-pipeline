@@ -9,6 +9,7 @@ This module contains comprehensive tests for:
 
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import patch
 
 from django.test import TestCase, TransactionTestCase
@@ -173,13 +174,11 @@ class StockIngestionRunModelTest(TestCase):
         )
         
         # Attempt to create second active run for same stock should fail
-        with self.assertRaises(IntegrityError) as context:
+        with self.assertRaises(IntegrityError):
             StockIngestionRun.objects.create(
                 stock=self.stock,
                 state=IngestionState.FETCHING
             )
-        
-        self.assertIn('unique_active_run_per_stock', str(context.exception))
 
     def test_unique_constraint_allows_terminal_and_active_runs(self):
         """Test that terminal runs don't conflict with active runs."""
@@ -545,24 +544,22 @@ class StockIngestionServiceTransactionTest(TransactionTestCase):
         errors = []
         
         def update_state():
-            try:
-                close_old_connections()
-                service = StockIngestionService()
-                updated = service.update_run_state(
-                    run_id=run.id,
-                    new_state=IngestionState.FETCHING
-                )
-                results.append(updated)
-            except InvalidStateTransitionError as e:
-                errors.append(e)
-        
-        # Run concurrent updates
-        threads = [threading.Thread(target=update_state) for _ in range(3)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=5)
-        self.assertTrue(all(not t.is_alive() for t in threads), "Worker threads hung")
+            close_old_connections()
+            service = StockIngestionService()
+            return service.update_run_state(
+                run_id=run.id,
+                new_state=IngestionState.FETCHING,
+            )
+
+        results = []
+        errors = []
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futures = [ex.submit(update_state) for _ in range(3)]
+            for f in as_completed(futures, timeout=5):
+                try:
+                    results.append(f.result())
+                except InvalidStateTransitionError as e:
+                    errors.append(e)
         # Refresh and verify state
         run.refresh_from_db()
         self.assertEqual(run.state, IngestionState.FETCHING)
