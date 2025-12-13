@@ -96,7 +96,7 @@ class QueueForFetchRequestSerializer(serializers.Serializer):
     stock for ingestion.
     """
     ticker = serializers.CharField(
-        max_length=20,
+        max_length=10,
         help_text="Stock ticker symbol (e.g., 'AAPL')"
     )
     requested_by = serializers.CharField(
@@ -185,4 +185,3 @@ class UpdateRunStateRequestSerializer(serializers.Serializer):
                 })
         
         return data
-
