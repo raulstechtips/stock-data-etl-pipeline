@@ -48,7 +48,7 @@ jobs:
       - name: Install PostgreSQL system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq5
+          sudo apt-get install -y libpq-dev
           # Clean up apt cache to reduce image size
           sudo rm -rf /var/lib/apt/lists/*
 
