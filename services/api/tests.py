@@ -50,6 +50,43 @@ class StockModelTest(TestCase):
         with self.assertRaises(IntegrityError):
             Stock.objects.create(ticker='AAPL')
 
+    def test_ticker_normalization_to_uppercase(self):
+        """Test that ticker symbols are normalized to uppercase on save."""
+        # Create stock with lowercase ticker
+        stock = Stock.objects.create(ticker='aapl')
+        
+        # Verify it's stored as uppercase
+        self.assertEqual(stock.ticker, 'AAPL')
+        
+        # Verify it can be retrieved with uppercase
+        retrieved = Stock.objects.get(ticker='AAPL')
+        self.assertEqual(retrieved.id, stock.id)
+
+    def test_ticker_case_insensitive_uniqueness_uppercase(self):
+        """Test that creating with uppercase after lowercase raises IntegrityError."""
+        # Create stock with lowercase
+        Stock.objects.create(ticker='aapl')
+        
+        # Try to create with uppercase - should raise IntegrityError
+        with self.assertRaises(IntegrityError):
+            Stock.objects.create(ticker='AAPL')
+
+    def test_ticker_case_insensitive_uniqueness_mixed_case(self):
+        """Test that creating with mixed case after lowercase raises IntegrityError."""
+        # Create stock with lowercase
+        Stock.objects.create(ticker='aapl')
+        
+        # Try to create with mixed case - should raise IntegrityError
+        with self.assertRaises(IntegrityError):
+            Stock.objects.create(ticker='AaPl')
+
+    def test_ticker_normalization_with_whitespace(self):
+        """Test that ticker symbols are stripped of whitespace."""
+        stock = Stock.objects.create(ticker='  aapl  ')
+        
+        # Verify it's stored as uppercase and trimmed
+        self.assertEqual(stock.ticker, 'AAPL')
+
     def test_stock_str_representation(self):
         """Test the string representation of a stock."""
         stock = Stock.objects.create(ticker='GOOGL')

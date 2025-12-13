@@ -40,9 +40,14 @@ class Stock(models.Model):
     This model stores basic stock information and serves as the
     parent entity for ingestion runs.
     
+    The ticker field is automatically normalized to uppercase and trimmed
+    of whitespace on save, ensuring case-insensitive uniqueness. This
+    prevents duplicate entries like 'aapl' and 'AAPL' from being created.
+    
     Attributes:
         id: UUID primary key
         ticker: Unique stock ticker symbol (e.g., 'AAPL', 'GOOGL')
+            Automatically normalized to uppercase on save.
         created_at: Timestamp when the stock was first added
         updated_at: Timestamp when the stock was last modified
     """
@@ -54,6 +59,17 @@ class Stock(models.Model):
     class Meta:
         db_table = 'stocks'
         ordering = ['ticker']
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to normalize ticker to uppercase before saving.
+        
+        This ensures consistent storage regardless of input case,
+        preventing duplicate entries like 'aapl' and 'AAPL'.
+        """
+        if self.ticker:
+            self.ticker = self.ticker.strip().upper()
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.ticker
