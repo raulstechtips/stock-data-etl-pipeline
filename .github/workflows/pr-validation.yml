@@ -76,4 +76,4 @@ jobs:
         working-directory: ./services
         run: |
           source .venv/bin/activate
-          python manage.py test api.tests --verbosity=2
+          python manage.py test api.tests --keepdb --verbosity=2

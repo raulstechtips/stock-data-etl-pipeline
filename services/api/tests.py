@@ -107,9 +107,11 @@ class StockIngestionRunModelTest(TestCase):
             IngestionState.SPARK_FINISHED,
         ]
         
-        for state in active_states:
+        # Use a different stock for each state to avoid unique constraint violation
+        for i, state in enumerate(active_states):
+            stock = Stock.objects.create(ticker=f'TEST{i}')
             run = StockIngestionRun.objects.create(
-                stock=self.stock,
+                stock=stock,
                 state=state
             )
             self.assertTrue(run.is_in_progress, f"State {state} should be in progress")
@@ -122,6 +124,78 @@ class StockIngestionRunModelTest(TestCase):
         
         self.assertIn('AAPL', str_repr)
         self.assertIn('QUEUED_FOR_FETCH', str_repr)
+
+    def test_unique_constraint_prevents_multiple_active_runs(self):
+        """Test that the unique constraint prevents multiple active runs for the same stock."""
+        from django.db import IntegrityError
+        
+        # Create first active run
+        StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        # Attempt to create second active run for same stock should fail
+        with self.assertRaises(IntegrityError) as context:
+            StockIngestionRun.objects.create(
+                stock=self.stock,
+                state=IngestionState.FETCHING
+            )
+        
+        self.assertIn('unique_active_run_per_stock', str(context.exception))
+
+    def test_unique_constraint_allows_terminal_and_active_runs(self):
+        """Test that terminal runs don't conflict with active runs."""
+        # Create a terminal run
+        StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE
+        )
+        
+        # Should be able to create an active run for the same stock
+        active_run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        self.assertEqual(active_run.state, IngestionState.QUEUED_FOR_FETCH)
+
+    def test_unique_constraint_allows_multiple_terminal_runs(self):
+        """Test that multiple terminal runs can exist for the same stock."""
+        # Create first terminal run
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE
+        )
+        
+        # Should be able to create another terminal run
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.FAILED
+        )
+        
+        self.assertEqual(run1.state, IngestionState.DONE)
+        self.assertEqual(run2.state, IngestionState.FAILED)
+
+    def test_unique_constraint_released_after_state_transition_to_terminal(self):
+        """Test that transitioning to terminal state releases the constraint."""
+        # Create an active run
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.FETCHING
+        )
+        
+        # Transition to terminal state
+        run.state = IngestionState.DONE
+        run.save()
+        
+        # Should now be able to create a new active run
+        new_run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        self.assertEqual(new_run.state, IngestionState.QUEUED_FOR_FETCH)
 
 
 class StockIngestionRunManagerTest(TestCase):
