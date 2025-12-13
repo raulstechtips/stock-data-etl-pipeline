@@ -64,7 +64,7 @@ class StockStatusView(APIView):
             serializer = StockStatusResponseSerializer(result)
             logger.info(
                 "Stock status retrieved successfully",
-                extra={'ticker': ticker.upper(), 'status': result.state, 'run_id': str(result.run_id) if result.run_id else None}
+                extra={'ticker': ticker.upper(), 'state': result.state, 'run_id': str(result.run_id) if result.run_id else None}
             )
             return Response(serializer.data, status=status.HTTP_200_OK)
             
@@ -148,7 +148,7 @@ class QueueForFetchView(APIView):
             )
         except IntegrityError:
             # Race condition: Another request created a run between our check and create
-            logger.exception(
+            logger.warning(
                 "Race condition detected while queuing stock for fetch",
                 extra={
                     'ticker': ticker.upper(),
