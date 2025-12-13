@@ -274,8 +274,13 @@ class StockIngestionService:
         If the stock has an active (non-terminal) ingestion run, returns
         that run without creating a new one.
         
-        This operation uses row-level locking to prevent race conditions
-        when multiple requests try to queue the same stock.
+        This operation relies on a unique database constraint combined with
+        transaction.atomic to detect and handle concurrent requests. When
+        multiple requests try to queue the same stock simultaneously, conflicts
+        are detected via IntegrityError raised by the unique constraint violation.
+        The IntegrityError bubbles up to the view layer, which handles it by
+        returning a 409 Conflict response (or fetching the existing run, depending
+        on the view implementation).
         
         Args:
             ticker: Stock ticker symbol (case-insensitive)
