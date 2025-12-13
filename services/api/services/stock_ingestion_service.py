@@ -301,28 +301,18 @@ class StockIngestionService:
         if request_id is None:
             request_id = timezone.now().strftime('%Y%m%d%H%M%S%f')
         
-        # Create new run - may raise IntegrityError if constraint violated
-        try:
-            now = timezone.now()
-            new_run = StockIngestionRun.objects.create(
-                stock=stock,
-                state=IngestionState.QUEUED_FOR_FETCH,
-                requested_by=requested_by,
-                request_id=request_id,
-                queued_for_fetch_at=now,
-            )
-            
-            logger.info(
-                f"Created new ingestion run for {ticker_upper}: "
-                f"run_id={new_run.id}, request_id={request_id}"
-            )
-            return new_run, True
-        except IntegrityError:
-            latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
-            if latest_run and latest_run.is_in_progress:
-                logger.warning(
-                    f"Race condition detected: Active run exists for {ticker_upper}: state={latest_run.state}, "
-                    f"run_id={latest_run.id}"
-                )
-                return latest_run, False
-            raise
+        # Create new run - IntegrityError will bubble up to view if constraint violated
+        now = timezone.now()
+        new_run = StockIngestionRun.objects.create(
+            stock=stock,
+            state=IngestionState.QUEUED_FOR_FETCH,
+            requested_by=requested_by,
+            request_id=request_id,
+            queued_for_fetch_at=now,
+        )
+        
+        logger.info(
+            f"Created new ingestion run for {ticker_upper}: "
+            f"run_id={new_run.id}, request_id={request_id}"
+        )
+        return new_run, True

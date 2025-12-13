@@ -10,6 +10,7 @@ This module contains the API views for:
 import logging
 from uuid import UUID
 
+from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
@@ -115,11 +116,21 @@ class QueueForFetchView(APIView):
         requested_by = validated_data.get('requested_by')
         request_id = validated_data.get('request_id')
         
-        run, created = self.service.queue_for_fetch(
-            ticker=ticker,
-            requested_by=requested_by,
-            request_id=request_id,
-        )
+        try:
+            run, created = self.service.queue_for_fetch(
+                ticker=ticker,
+                requested_by=requested_by,
+                request_id=request_id,
+            )
+        except IntegrityError:
+            # Race condition: Another request created a run between our check and create
+            return Response(
+                {
+                    'error': 'An ingestion run for this stock was created by another request. Please try again.',
+                    'ticker': ticker.upper()
+                },
+                status=status.HTTP_409_CONFLICT
+            )
         
         response_serializer = StockIngestionRunSerializer(run)
         

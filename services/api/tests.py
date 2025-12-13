@@ -668,6 +668,29 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.data['requested_by'], 'data-pipeline')
         self.assertEqual(response.data['request_id'], 'req-2024-001')
 
+    def test_queue_handles_integrity_error_race_condition(self):
+        """Test that IntegrityError from race condition returns 409 Conflict."""
+        from django.db import IntegrityError
+        
+        # Mock the service to raise IntegrityError (simulating race condition)
+        with patch('api.views.StockIngestionService') as MockService:
+            mock_service = MockService.return_value
+            mock_service.queue_for_fetch.side_effect = IntegrityError(
+                'duplicate key value violates unique constraint'
+            )
+            
+            response = self.client.post(
+                self.url,
+                {'ticker': 'AAPL'},
+                format='json'
+            )
+            
+            self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+            self.assertIn('error', response.data)
+            self.assertIn('ticker', response.data)
+            self.assertEqual(response.data['ticker'], 'AAPL')
+            self.assertIn('another request', response.data['error'].lower())
+
 
 class UpdateRunStateAPITest(APITestCase):
     """Tests for the PATCH /api/runs/<run_id>/state endpoint."""
