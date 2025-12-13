@@ -175,6 +175,7 @@ class StockIngestionService:
         try:
             return StockIngestionRun.objects.select_related('stock').get(id=run_id)
         except StockIngestionRun.DoesNotExist:
+            logger.exception("ingestion_run_not_found", extra={"run_id": str(run_id)})
             raise IngestionRunNotFoundError(f"Ingestion run '{run_id}' not found")
 
     @transaction.atomic
@@ -212,7 +213,7 @@ class StockIngestionService:
         try:
             run = StockIngestionRun.objects.select_for_update().get(id=run_id)
         except StockIngestionRun.DoesNotExist:
-            logger.error(f"Ingestion run not found: {run_id}")
+            logger.exception("ingestion_run_not_found", extra={"run_id": str(run_id)})
             raise IngestionRunNotFoundError(f"Ingestion run '{run_id}' not found")
         
         current_state = run.state
