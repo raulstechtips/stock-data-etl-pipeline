@@ -121,7 +121,7 @@ required_database = {
 }
 
 missing = [name for name, val in required_database.items() if not val]
-if missing and APP_ENV in ["prod", "stage", "dev"]:
+if missing:
     raise ImproperlyConfigured(
         f"Missing required database settings: {', '.join(missing)}"
     )
