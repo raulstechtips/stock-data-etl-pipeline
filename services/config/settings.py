@@ -165,7 +165,6 @@ REDIS_DB = os.environ.get("REDIS_DB", "0")
 required_redis = {
     "REDIS_HOST": REDIS_HOST,
     "REDIS_PASSWORD": REDIS_PASSWORD,
-    "REDIS_DB": REDIS_DB,
 }
 
 missing = [name for name, val in required_redis.items() if not val]
@@ -176,10 +175,7 @@ if missing and APP_ENV in ["prod", "stage", "dev"]:
 
 if APP_ENV in ["prod", "stage", "dev"]:
     # Build Redis connection URL
-    redis_url = f"redis://"
-    if REDIS_PASSWORD:
-        redis_url += f":{REDIS_PASSWORD}@"
-    redis_url += f"{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    redis_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
     
     CACHES = {
         'default': {
