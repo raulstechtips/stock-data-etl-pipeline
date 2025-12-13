@@ -64,7 +64,7 @@ class StockStatusView(APIView):
             serializer = StockStatusResponseSerializer(result)
             logger.info(
                 "Stock status retrieved successfully",
-                extra={'ticker': ticker.upper(), 'status': result.get('status')}
+                extra={'ticker': ticker.upper(), 'status': result.state, 'run_id': str(result.run_id) if result.run_id else None}
             )
             return Response(serializer.data, status=status.HTTP_200_OK)
             
