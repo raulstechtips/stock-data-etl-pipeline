@@ -66,7 +66,13 @@ class StockStatusView(APIView):
             
         except StockNotFoundError as e:
             return Response(
-                {'error': str(e), 'ticker': ticker.upper()},
+                {
+                    'error': {
+                        'message': str(e),
+                        'code': 'STOCK_NOT_FOUND',
+                        'details': {'ticker': ticker.upper()}
+                    }
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -107,7 +113,13 @@ class QueueForFetchView(APIView):
         
         if not serializer.is_valid():
             return Response(
-                {'errors': serializer.errors},
+                {
+                    'error': {
+                        'message': 'Validation failed',
+                        'code': 'VALIDATION_ERROR',
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -126,8 +138,11 @@ class QueueForFetchView(APIView):
             # Race condition: Another request created a run between our check and create
             return Response(
                 {
-                    'error': 'An ingestion run for this stock was created by another request. Please try again.',
-                    'ticker': ticker.upper()
+                    'error': {
+                        'message': 'An ingestion run for this stock was created by another request. Please try again.',
+                        'code': 'RACE_CONDITION',
+                        'details': {'ticker': ticker.upper()}
+                    }
                 },
                 status=status.HTTP_409_CONFLICT
             )
@@ -185,7 +200,13 @@ class UpdateRunStateView(APIView):
             run_uuid = UUID(run_id)
         except ValueError:
             return Response(
-                {'error': f"Invalid run ID format: '{run_id}'"},
+                {
+                    'error': {
+                        'message': f"Invalid run ID format: '{run_id}'",
+                        'code': 'INVALID_UUID',
+                        'details': {'run_id': run_id}
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -193,7 +214,13 @@ class UpdateRunStateView(APIView):
         
         if not serializer.is_valid():
             return Response(
-                {'errors': serializer.errors},
+                {
+                    'error': {
+                        'message': 'Validation failed',
+                        'code': 'VALIDATION_ERROR',
+                        'details': serializer.errors
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -217,13 +244,25 @@ class UpdateRunStateView(APIView):
             
         except IngestionRunNotFoundError as e:
             return Response(
-                {'error': str(e)},
+                {
+                    'error': {
+                        'message': str(e),
+                        'code': 'RUN_NOT_FOUND',
+                        'details': {'run_id': str(run_uuid)}
+                    }
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
             
         except InvalidStateTransitionError as e:
             return Response(
-                {'error': str(e)},
+                {
+                    'error': {
+                        'message': str(e),
+                        'code': 'INVALID_STATE_TRANSITION',
+                        'details': {'run_id': str(run_uuid)}
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -258,7 +297,13 @@ class RunDetailView(APIView):
             run_uuid = UUID(run_id)
         except ValueError:
             return Response(
-                {'error': f"Invalid run ID format: '{run_id}'"},
+                {
+                    'error': {
+                        'message': f"Invalid run ID format: '{run_id}'",
+                        'code': 'INVALID_UUID',
+                        'details': {'run_id': run_id}
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -269,6 +314,12 @@ class RunDetailView(APIView):
             
         except IngestionRunNotFoundError as e:
             return Response(
-                {'error': str(e)},
+                {
+                    'error': {
+                        'message': str(e),
+                        'code': 'RUN_NOT_FOUND',
+                        'details': {'run_id': str(run_uuid)}
+                    }
+                },
                 status=status.HTTP_404_NOT_FOUND
             )

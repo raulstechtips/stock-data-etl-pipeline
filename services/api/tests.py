@@ -11,10 +11,10 @@ import threading
 import uuid
 from unittest.mock import patch
 
-from django.db import transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
-from django.utils import timezone
+from django.db import IntegrityError, close_old_connections
+from django.db.utils import DatabaseError
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -47,7 +47,7 @@ class StockModelTest(TestCase):
         """Test that ticker symbols must be unique."""
         Stock.objects.create(ticker='AAPL')
         
-        with self.assertRaises(Exception):
+        with self.assertRaises(IntegrityError):
             Stock.objects.create(ticker='AAPL')
 
     def test_stock_str_representation(self):
@@ -208,7 +208,7 @@ class StockIngestionRunManagerTest(TestCase):
     def test_get_latest_for_stock(self):
         """Test getting the latest run for a stock."""
         # Create multiple runs
-        older_run = StockIngestionRun.objects.create(
+        _older_run = StockIngestionRun.objects.create(
             stock=self.stock,
             state=IngestionState.DONE
         )
@@ -368,7 +368,7 @@ class StockIngestionServiceTest(TestCase):
 
     def test_queue_for_fetch_creates_stock_if_not_exists(self):
         """Test that queuing creates the stock if it doesn't exist."""
-        run, created = self.service.queue_for_fetch(ticker='NEWSTOCK')
+        _run, created = self.service.queue_for_fetch(ticker='NEWSTOCK')
         
         self.assertTrue(created)
         self.assertTrue(Stock.objects.filter(ticker='NEWSTOCK').exists())
@@ -488,13 +488,14 @@ class StockIngestionServiceTransactionTest(TransactionTestCase):
         with patch.object(
             StockIngestionRun.objects,
             'create',
-            side_effect=Exception('Database error')
+            side_effect=DatabaseError('Database error')
         ):
-            with self.assertRaises(Exception):
+            with self.assertRaises(DatabaseError):
                 self.service.queue_for_fetch(ticker='NEWSTOCK')
         
         # Verify no run was created
         self.assertEqual(StockIngestionRun.objects.count(), initial_run_count)
+        self.assertFalse(Stock.objects.filter(ticker='NEWSTOCK').exists())
 
     def test_update_run_state_concurrent_updates(self):
         """Test that concurrent state updates are handled correctly."""
@@ -508,13 +509,14 @@ class StockIngestionServiceTransactionTest(TransactionTestCase):
         
         def update_state():
             try:
+                close_old_connections()
                 service = StockIngestionService()
                 updated = service.update_run_state(
                     run_id=run.id,
                     new_state=IngestionState.FETCHING
                 )
                 results.append(updated)
-            except Exception as e:
+            except InvalidStateTransitionError as e:
                 errors.append(e)
         
         # Run concurrent updates
@@ -522,8 +524,8 @@ class StockIngestionServiceTransactionTest(TransactionTestCase):
         for t in threads:
             t.start()
         for t in threads:
-            t.join()
-        
+            t.join(timeout=5)
+        self.assertTrue(all(not t.is_alive() for t in threads), "Worker threads hung")
         # Refresh and verify state
         run.refresh_from_db()
         self.assertEqual(run.state, IngestionState.FETCHING)
@@ -638,6 +640,11 @@ class StockStatusAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'STOCK_NOT_FOUND')
+        self.assertIn('details', response.data['error'])
+        self.assertEqual(response.data['error']['details']['ticker'], 'NONEXISTENT')
 
     def test_get_status_case_insensitive(self):
         """Test that the endpoint is case-insensitive."""
@@ -714,6 +721,11 @@ class QueueForFetchAPITest(APITestCase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
+        self.assertIn('details', response.data['error'])
 
     def test_queue_normalizes_ticker_to_uppercase(self):
         """Test that tickers are normalized to uppercase."""
@@ -761,9 +773,12 @@ class QueueForFetchAPITest(APITestCase):
             
             self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
             self.assertIn('error', response.data)
-            self.assertIn('ticker', response.data)
-            self.assertEqual(response.data['ticker'], 'AAPL')
-            self.assertIn('another request', response.data['error'].lower())
+            self.assertIn('message', response.data['error'])
+            self.assertIn('code', response.data['error'])
+            self.assertEqual(response.data['error']['code'], 'RACE_CONDITION')
+            self.assertIn('details', response.data['error'])
+            self.assertEqual(response.data['error']['details']['ticker'], 'AAPL')
+            self.assertIn('another request', response.data['error']['message'].lower())
 
 
 class UpdateRunStateAPITest(APITestCase):
@@ -799,6 +814,10 @@ class UpdateRunStateAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'INVALID_STATE_TRANSITION')
+        self.assertIn('details', response.data['error'])
 
     def test_update_to_failed_requires_error_info(self):
         """Test that transitioning to FAILED requires error info."""
@@ -809,6 +828,11 @@ class UpdateRunStateAPITest(APITestCase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
+        self.assertIn('details', response.data['error'])
 
     def test_update_to_failed_with_error_info(self):
         """Test transitioning to FAILED with proper error info."""
@@ -838,6 +862,12 @@ class UpdateRunStateAPITest(APITestCase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'RUN_NOT_FOUND')
+        self.assertIn('details', response.data['error'])
+        self.assertEqual(response.data['error']['details']['run_id'], str(fake_id))
 
     def test_update_invalid_uuid_format(self):
         """Test updating with an invalid UUID format."""
@@ -850,6 +880,12 @@ class UpdateRunStateAPITest(APITestCase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'INVALID_UUID')
+        self.assertIn('details', response.data['error'])
+        self.assertEqual(response.data['error']['details']['run_id'], 'invalid-uuid')
 
     def test_update_with_data_uris(self):
         """Test updating with data URIs."""
@@ -897,6 +933,12 @@ class RunDetailAPITest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'RUN_NOT_FOUND')
+        self.assertIn('details', response.data['error'])
+        self.assertEqual(response.data['error']['details']['run_id'], str(fake_id))
 
     def test_get_run_invalid_uuid(self):
         """Test getting with an invalid UUID format."""
@@ -905,3 +947,9 @@ class RunDetailAPITest(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'INVALID_UUID')
+        self.assertIn('details', response.data['error'])
+        self.assertEqual(response.data['error']['details']['run_id'], 'invalid-uuid')
