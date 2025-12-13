@@ -91,7 +91,12 @@ class StockIngestionRunManager(models.Manager):
         Returns:
             The latest StockIngestionRun or None if no runs exist
         """
-        return self.filter(stock_id=stock_id).order_by('-created_at').first()
+        return (
+            self.select_related('stock')
+            .filter(stock_id=stock_id)
+            .order_by('-created_at')
+            .first()
+        )
 
     def get_latest_by_ticker(self, ticker: str) -> 'StockIngestionRun | None':
         """
