@@ -62,9 +62,17 @@ class StockStatusView(APIView):
         try:
             result = self.service.get_stock_status(ticker)
             serializer = StockStatusResponseSerializer(result)
+            logger.info(
+                "Stock status retrieved successfully",
+                extra={'ticker': ticker.upper(), 'status': result.get('status')}
+            )
             return Response(serializer.data, status=status.HTTP_200_OK)
             
         except StockNotFoundError as e:
+            logger.warning(
+                "Stock not found",
+                extra={'ticker': ticker.upper(), 'error': str(e)}
+            )
             return Response(
                 {
                     'error': {
@@ -112,6 +120,10 @@ class QueueForFetchView(APIView):
         serializer = QueueForFetchRequestSerializer(data=request.data)
         
         if not serializer.is_valid():
+            logger.warning(
+                "Queue for fetch validation failed",
+                extra={'errors': serializer.errors, 'data': request.data}
+            )
             return Response(
                 {
                     'error': {
@@ -136,6 +148,14 @@ class QueueForFetchView(APIView):
             )
         except IntegrityError:
             # Race condition: Another request created a run between our check and create
+            logger.exception(
+                "Race condition detected while queuing stock for fetch",
+                extra={
+                    'ticker': ticker.upper(),
+                    'requested_by': requested_by,
+                    'request_id': request_id,
+                }
+            )
             return Response(
                 {
                     'error': {
@@ -150,12 +170,30 @@ class QueueForFetchView(APIView):
         response_serializer = StockIngestionRunSerializer(run)
         
         if created:
+            logger.info(
+                "Stock queued for fetch successfully - new run created",
+                extra={
+                    'ticker': ticker.upper(),
+                    'run_id': str(run.id),
+                    'requested_by': requested_by,
+                    'request_id': request_id
+                }
+            )
             return Response(
                 response_serializer.data,
                 status=status.HTTP_201_CREATED
             )
         else:
             # Active run already exists
+            logger.info(
+                "Stock already queued - returning existing run",
+                extra={
+                    'ticker': ticker.upper(),
+                    'run_id': str(run.id),
+                    'run_state': run.state,
+                    'requested_by': requested_by
+                }
+            )
             return Response(
                 response_serializer.data,
                 status=status.HTTP_200_OK
@@ -198,7 +236,11 @@ class UpdateRunStateView(APIView):
         # Validate UUID format
         try:
             run_uuid = UUID(run_id)
-        except ValueError:
+        except ValueError as e:
+            logger.warning(
+                "Invalid UUID format in update run state request",
+                extra={'run_id': run_id, 'error': str(e)}
+            )
             return Response(
                 {
                     'error': {
@@ -213,6 +255,10 @@ class UpdateRunStateView(APIView):
         serializer = UpdateRunStateRequestSerializer(data=request.data)
         
         if not serializer.is_valid():
+            logger.warning(
+                "Update run state validation failed",
+                extra={'run_id': run_id, 'errors': serializer.errors, 'data': request.data}
+            )
             return Response(
                 {
                     'error': {
@@ -236,6 +282,16 @@ class UpdateRunStateView(APIView):
                 processed_data_uri=validated_data.get('processed_data_uri'),
             )
             
+            logger.info(
+                "Run state updated successfully",
+                extra={
+                    'run_id': str(run_uuid),
+                    'new_state': validated_data['state'],
+                    'ticker': run.stock.ticker,
+                    'error_code': validated_data.get('error_code'),
+                }
+            )
+            
             response_serializer = StockIngestionRunSerializer(run)
             return Response(
                 response_serializer.data,
@@ -243,6 +299,10 @@ class UpdateRunStateView(APIView):
             )
             
         except IngestionRunNotFoundError as e:
+            logger.warning(
+                "Ingestion run not found for state update",
+                extra={'run_id': str(run_uuid), 'error': str(e)}
+            )
             return Response(
                 {
                     'error': {
@@ -255,6 +315,14 @@ class UpdateRunStateView(APIView):
             )
             
         except InvalidStateTransitionError as e:
+            logger.warning(
+                "Invalid state transition attempted",
+                extra={
+                    'run_id': str(run_uuid),
+                    'requested_state': validated_data['state'],
+                    'error': str(e)
+                }
+            )
             return Response(
                 {
                     'error': {
@@ -295,7 +363,11 @@ class RunDetailView(APIView):
         # Validate UUID format
         try:
             run_uuid = UUID(run_id)
-        except ValueError:
+        except ValueError as e:
+            logger.warning(
+                "Invalid UUID format in run detail request",
+                extra={'run_id': run_id, 'error': str(e)}
+            )
             return Response(
                 {
                     'error': {
@@ -310,9 +382,21 @@ class RunDetailView(APIView):
         try:
             run = self.service.get_run_by_id(run_uuid)
             serializer = StockIngestionRunSerializer(run)
+            logger.info(
+                "Run details retrieved successfully",
+                extra={
+                    'run_id': str(run_uuid),
+                    'ticker': run.stock.ticker,
+                    'state': run.state
+                }
+            )
             return Response(serializer.data, status=status.HTTP_200_OK)
             
         except IngestionRunNotFoundError as e:
+            logger.warning(
+                "Ingestion run not found",
+                extra={'run_id': str(run_uuid), 'error': str(e)}
+            )
             return Response(
                 {
                     'error': {
