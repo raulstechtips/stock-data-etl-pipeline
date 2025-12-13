@@ -122,7 +122,7 @@ class QueueForFetchView(APIView):
         if not serializer.is_valid():
             logger.warning(
                 "Queue for fetch validation failed",
-                extra={'errors': serializer.errors, 'data': request.data}
+                extra={'errors': serializer.errors}
             )
             return Response(
                 {
@@ -257,7 +257,7 @@ class UpdateRunStateView(APIView):
         if not serializer.is_valid():
             logger.warning(
                 "Update run state validation failed",
-                extra={'run_id': run_id, 'errors': serializer.errors, 'data': request.data}
+                extra={'run_id': run_id, 'errors': serializer.errors}
             )
             return Response(
                 {
