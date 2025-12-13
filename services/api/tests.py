@@ -540,9 +540,6 @@ class StockIngestionServiceTransactionTest(TransactionTestCase):
             state=IngestionState.QUEUED_FOR_FETCH
         )
         
-        results = []
-        errors = []
-        
         def update_state():
             close_old_connections()
             service = StockIngestionService()
