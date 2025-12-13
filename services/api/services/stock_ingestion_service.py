@@ -239,6 +239,10 @@ class StockIngestionService:
         
         # Update error information if transitioning to FAILED
         if new_state == IngestionState.FAILED:
+            if not error_code or not error_message:
+                raise InvalidStateTransitionError(
+                    "FAILED requires both error_code and error_message"
+                )
             run.error_code = error_code
             run.error_message = error_message
         
