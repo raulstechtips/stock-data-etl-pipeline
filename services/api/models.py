@@ -158,6 +158,7 @@ class StockIngestionRun(models.Model):
     spark_started_at = models.DateTimeField(null=True, blank=True)
     spark_finished_at = models.DateTimeField(null=True, blank=True)
     done_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
     
     # Error information
     error_code = models.CharField(max_length=50, null=True, blank=True)

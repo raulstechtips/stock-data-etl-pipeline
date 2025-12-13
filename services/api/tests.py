@@ -518,6 +518,7 @@ class StateTransitionTest(TestCase):
             )
             
             self.assertEqual(updated.state, IngestionState.FAILED)
+            self.assertIsNotNone(updated.failed_at, "failed_at timestamp should be set when transitioning to FAILED")
 
 
 # =============================================================================

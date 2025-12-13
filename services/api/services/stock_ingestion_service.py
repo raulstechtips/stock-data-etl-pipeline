@@ -78,6 +78,7 @@ STATE_TIMESTAMP_FIELDS: dict[str, str] = {
     IngestionState.SPARK_RUNNING: 'spark_started_at',
     IngestionState.SPARK_FINISHED: 'spark_finished_at',
     IngestionState.DONE: 'done_at',
+    IngestionState.FAILED: 'failed_at',
 }
 
 

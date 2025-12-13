@@ -54,6 +54,7 @@ class StockIngestionRunSerializer(serializers.ModelSerializer):
             'spark_started_at',
             'spark_finished_at',
             'done_at',
+            'failed_at',
             'error_code',
             'error_message',
             'raw_data_uri',
