@@ -45,10 +45,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install UV
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Install uv with all available options
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.17"
+          python-version: "3.12"
+          working-directory: "services"
 
       - name: Cache UV dependencies
         uses: actions/cache@v4
