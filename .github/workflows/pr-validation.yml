@@ -45,6 +45,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install PostgreSQL system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq5
+          # Clean up apt cache to reduce image size
+          sudo rm -rf /var/lib/apt/lists/*
+
       - name: Install uv with all available options
         uses: astral-sh/setup-uv@v7
         with:
