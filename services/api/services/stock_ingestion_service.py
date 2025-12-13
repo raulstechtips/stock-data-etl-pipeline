@@ -285,7 +285,7 @@ class StockIngestionService:
         ticker_upper = ticker.upper()
         
         # Get or create the stock
-        stock, stock_created = self.get_or_create_stock(ticker_upper)
+        stock, _stock_created = self.get_or_create_stock(ticker_upper)
         
         # Check for existing active run
         latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
