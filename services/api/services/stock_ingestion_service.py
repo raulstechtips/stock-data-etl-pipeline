@@ -109,7 +109,7 @@ class StockIngestionService:
         Raises:
             StockNotFoundError: If the stock ticker doesn't exist
         """
-        ticker_upper = ticker.upper()
+        ticker_upper = ticker.strip().upper()
         
         try:
             stock = Stock.objects.get(ticker=ticker_upper)
@@ -149,7 +149,7 @@ class StockIngestionService:
         Returns:
             Tuple of (Stock instance, created boolean)
         """
-        ticker_upper = ticker.upper()
+        ticker_upper = ticker.strip().upper()
         stock, created = Stock.objects.get_or_create(
             ticker=ticker_upper,
         )
@@ -287,7 +287,7 @@ class StockIngestionService:
             - If run already existed: (existing_run, False)
             - If new run created: (new_run, True)
         """
-        ticker_upper = ticker.upper()
+        ticker_upper = ticker.strip().upper()
         
         # Get or create the stock
         stock, _stock_created = self.get_or_create_stock(ticker_upper)
