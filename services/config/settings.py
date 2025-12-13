@@ -10,8 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
 import os
+from urllib.parse import quote
+from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -121,37 +122,40 @@ required_database = {
 }
 
 missing = [name for name, val in required_database.items() if not val]
-if missing and APP_ENV in ["prod", "stage", "dev"]:
+if missing:
     raise ImproperlyConfigured(
         f"Missing required database settings: {', '.join(missing)}"
     )
 
-if APP_ENV in ["prod", "stage", "dev"]:
+DATABASE_DEFAULT = {
+    "ENGINE": "django.db.backends.postgresql",
+    "NAME": SQL_DATABASE,
+    "USER": SQL_USER,
+    "PASSWORD": SQL_PASSWORD,
+    "HOST": SQL_HOST,
+    "PORT": "5432",
+}
+
+if APP_ENV in ["prod", "stage"]:
     # Production database configuration optimized for RDS
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": SQL_DATABASE,
-            "USER": SQL_USER,
-            "PASSWORD": SQL_PASSWORD,
-            "HOST": SQL_HOST,
-            "PORT": "5432",
-            "OPTIONS": {
+            **DATABASE_DEFAULT,
+            'OPTIONS': {
                 'connect_timeout': 10,
                 # 'application_name': '',
             },
-            # Connection pooling settings for RDS with 87 max connections
             'CONN_MAX_AGE': 600,  # 10 minutes - keeps connections alive to reduce overhead
-            'CONN_HEALTH_CHECKS': True,  # Verify connections before use
+            'CONN_HEALTH_CHECKS': True  # Verify connections before use
         }
     }
 else:
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            **DATABASE_DEFAULT
         }
     }
+
 
 # Cache
 REDIS_HOST = os.environ.get("REDIS_HOST")
@@ -161,6 +165,7 @@ REDIS_DB = os.environ.get("REDIS_DB", "0")
 
 required_redis = {
     "REDIS_HOST": REDIS_HOST,
+    "REDIS_PASSWORD": REDIS_PASSWORD,
 }
 
 missing = [name for name, val in required_redis.items() if not val]
@@ -171,10 +176,8 @@ if missing and APP_ENV in ["prod", "stage", "dev"]:
 
 if APP_ENV in ["prod", "stage", "dev"]:
     # Build Redis connection URL
-    redis_url = f"redis://"
-    if REDIS_PASSWORD:
-        redis_url += f":{REDIS_PASSWORD}@"
-    redis_url += f"{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    encoded_pw = quote(REDIS_PASSWORD or "", safe="")
+    redis_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
     
     CACHES = {
         'default': {
