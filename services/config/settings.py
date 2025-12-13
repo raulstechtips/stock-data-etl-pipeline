@@ -10,8 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
 import os
+from urllib.parse import quote
+from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -175,6 +176,7 @@ if missing and APP_ENV in ["prod", "stage", "dev"]:
 
 if APP_ENV in ["prod", "stage", "dev"]:
     # Build Redis connection URL
+    encoded_pw = quote(REDIS_PASSWORD or "", safe="")
     redis_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
     
     CACHES = {
