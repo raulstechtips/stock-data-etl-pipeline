@@ -47,6 +47,11 @@ class APINotFoundError(NonRetryableError):
     pass
 
 
+class APIClientError(NonRetryableError):
+    """API client error (4xx non-retryable, except rate limits)."""
+    pass
+
+
 class APIRateLimitError(RetryableError):
     """API rate limit exceeded (retryable with backoff)."""
     pass

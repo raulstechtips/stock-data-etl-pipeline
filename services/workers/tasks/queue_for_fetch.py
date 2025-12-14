@@ -32,6 +32,7 @@ from api.services.stock_ingestion_service import (
 )
 from workers.exceptions import (
     APIAuthenticationError,
+    APIClientError,
     APIFetchError,
     APINotFoundError,
     APIRateLimitError,
@@ -192,7 +193,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                 extra={"ticker": ticker, "bytes": len(file_data)}
             )
         
-        except (APIAuthenticationError, APINotFoundError, InvalidDataFormatError) as e:
+        except (APIAuthenticationError, APINotFoundError, APIClientError, InvalidDataFormatError) as e:
             # Non-retryable API errors
             logger.exception("Non-retryable API error", extra={"ticker": ticker})
             _transition_to_failed(service, run_uuid, "API_ERROR", str(e))
@@ -306,11 +307,12 @@ def _fetch_from_api(ticker: str) -> bytes:
         bytes: The JSON data as bytes
         
     Raises:
-        APIAuthenticationError: If authentication fails
-        APINotFoundError: If the ticker is not found
+        APIAuthenticationError: If authentication fails (401)
+        APINotFoundError: If the ticker is not found (404)
+        APIClientError: For other client errors (4xx except 429)
         APITimeoutError: If the request times out
-        APIRateLimitError: If rate limit is exceeded
-        APIFetchError: For other API errors
+        APIRateLimitError: If rate limit is exceeded (429)
+        APIFetchError: For server errors (5xx) and other API errors
         InvalidDataFormatError: If response is not valid JSON data
     """
     try:
@@ -383,10 +385,14 @@ def _fetch_from_api(ticker: str) -> bytes:
             # Server errors are retryable
             logger.exception("API server error", extra={"ticker": ticker, "status_code": e.response.status_code})
             raise APIFetchError(f"API server error for {ticker}: {e}") from e
-        else:
-            # Client errors are not retryable (except specific ones handled above)
+        elif 400 <= e.response.status_code <= 499:
+            # Client errors (4xx) are not retryable (specific ones like 401, 404, 429 are handled above)
             logger.exception("API client error", extra={"ticker": ticker, "status_code": e.response.status_code})
-            raise APIFetchError(f"API client error for {ticker}: {e}") from e
+            raise APIClientError(f"API client error for {ticker} (status {e.response.status_code}): {e}") from e
+        else:
+            # Fallback for any other unexpected status codes
+            logger.exception("Unexpected API error", extra={"ticker": ticker, "status_code": e.response.status_code})
+            raise APIFetchError(f"Unexpected API error for {ticker}: {e}") from e
     
     except RequestException as e:
         logger.exception("API request error", extra={"ticker": ticker})
