@@ -834,11 +834,13 @@ class QueueForFetchAPITest(APITestCase):
         
         # Should return 500 error
         self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
-        self.assertIn('error', response.data)
-        self.assertIn('run_id', response.data)
+        self.assertIn('message', response.data)
+        self.assertIn('code', response.data)
+        self.assertIn('details', response.data)
+        self.assertIn('run_id', response.data['details'])
         
         # Verify run was created but transitioned to FAILED
-        run = StockIngestionRun.objects.get(id=response.data['run_id'])
+        run = StockIngestionRun.objects.get(id=response.data['details']['run_id'])
         self.assertEqual(run.state, IngestionState.FAILED)
         self.assertEqual(run.error_code, 'BROKER_ERROR')
         self.assertIn('broker', run.error_message.lower())
