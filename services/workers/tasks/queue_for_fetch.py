@@ -357,7 +357,7 @@ def _fetch_from_api(ticker: str) -> bytes:
         
         # Validate data is not empty
         if len(json_data) == 0:
-            logger.exception("invalid_data_format_error", extra={"ticker": str(ticker)})
+            logger.error("invalid_data_format_error", extra={"ticker": ticker})
             raise InvalidDataFormatError("Received empty response from API")
         
         return json_data
