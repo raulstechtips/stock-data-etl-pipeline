@@ -77,3 +77,9 @@ jobs:
         run: |
           source .venv/bin/activate
           python manage.py test api.tests --keepdb --verbosity=2
+
+      - name: Run Worker tests
+        working-directory: ./services
+        run: |
+          source .venv/bin/activate
+          python manage.py test workers.tests --keepdb --verbosity=2
