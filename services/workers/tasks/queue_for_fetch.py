@@ -14,7 +14,7 @@ import logging
 import uuid
 from urllib.parse import urlparse
 from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import TypedDict, NotRequired
 
 import requests
 from celery import Task, shared_task
@@ -51,8 +51,7 @@ from workers.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class FetchStockDataResult:
+class FetchStockDataResult(TypedDict):
     """
     Result object returned by the fetch_stock_data task.
     
@@ -68,8 +67,8 @@ class FetchStockDataResult:
     ticker: str
     state: str
     skipped: bool
-    data_uri: Optional[str] = None
-    reason: Optional[str] = None
+    data_uri: NotRequired[str]
+    reason: NotRequired[str]
 
 
 class FetchTask(Task):
@@ -145,7 +144,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     "Run already past QUEUED_FOR_FETCH, skipping fetch (likely duplicate task execution)",
                     extra={"run_id": run_id, "state": run.state}
                 )
-                result = FetchStockDataResult(
+                return FetchStockDataResult(
                     run_id=str(run_id),
                     ticker=ticker,
                     state=run.state,
@@ -153,7 +152,6 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     data_uri=run.raw_data_uri,
                     reason='already_processed'
                 )
-                return asdict(result)
             
             # Check if in FAILED state (should not retry from API)
             if run.state == IngestionState.FAILED:
@@ -268,14 +266,13 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             )
             logger.info("Successfully completed fetch", extra={"run_id": run_id, "ticker": ticker})
             
-            result = FetchStockDataResult(
+            return FetchStockDataResult(
                 run_id=str(run_id),
                 ticker=ticker,
                 state=IngestionState.FETCHED,
                 skipped=False,
                 data_uri=data_uri
             )
-            return asdict(result)
         
         except (InvalidStateTransitionError, IngestionRunNotFoundError, DatabaseError) as e:
             # Database errors during final state transition
