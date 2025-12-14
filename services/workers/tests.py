@@ -29,6 +29,7 @@ from workers.exceptions import (
     NonRetryableError,
     RetryableError,
     StorageAuthenticationError,
+    StorageBucketNotFoundError,
     StorageConnectionError,
     StorageUploadError,
 )
@@ -75,6 +76,35 @@ class FetchStockDataTaskTest(TransactionTestCase):
         self.assertEqual(run.state, IngestionState.FETCHED)
         self.assertIsNotNone(run.raw_data_uri)
         self.assertIsNotNone(run.fetching_started_at)
+        self.assertIsNotNone(run.fetching_finished_at)
+    
+    @patch('workers.tasks.queue_for_fetch._upload_to_storage')
+    @patch('workers.tasks.queue_for_fetch._fetch_from_api')
+    def test_fetching_state_retry_proceeds(self, mock_fetch, mock_upload):
+        """Test that a run in FETCHING state (from a previous retry) can proceed."""
+        # Create run already in FETCHING state (from a previous retry attempt)
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.FETCHING
+        )
+        
+        # Mock successful API fetch and upload
+        mock_fetch.return_value = b'{"ticker": "AAPL", "data": [{"date": "2025-01-01", "price": 150.00}]}'
+        mock_upload.return_value = f's3://bucket/AAPL/{run.id}.json'
+        
+        # Execute task
+        result = fetch_stock_data(str(run.id), 'AAPL')
+        
+        # Verify result
+        self.assertEqual(result.run_id, str(run.id))
+        self.assertEqual(result.ticker, 'AAPL')
+        self.assertEqual(result.state, IngestionState.FETCHED)
+        self.assertFalse(result.skipped)
+        
+        # Verify run state transitioned to FETCHED
+        run.refresh_from_db()
+        self.assertEqual(run.state, IngestionState.FETCHED)
+        self.assertIsNotNone(run.raw_data_uri)
         self.assertIsNotNone(run.fetching_finished_at)
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
@@ -191,6 +221,24 @@ class FetchStockDataTaskTest(TransactionTestCase):
         mock_fetch.assert_not_called()
         mock_upload.assert_not_called()
     
+    def test_failed_state_raises_non_retryable_error(self):
+        """Test that attempting to fetch a run already in FAILED state raises NonRetryableError."""
+        # Create run that's already FAILED
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.FAILED,
+            error_code='API_ERROR',
+            error_message='Previous failure'
+        )
+        
+        # Execute task - should raise NonRetryableError
+        with self.assertRaises(NonRetryableError):
+            fetch_stock_data(str(run.id), 'AAPL')
+        
+        # Verify run state remains FAILED
+        run.refresh_from_db()
+        self.assertEqual(run.state, IngestionState.FAILED)
+    
     def test_run_not_found(self):
         """Test that task fails if run doesn't exist."""
         fake_id = str(uuid.uuid4())
@@ -262,6 +310,28 @@ class FetchStockDataTaskTest(TransactionTestCase):
         run.refresh_from_db()
         self.assertEqual(run.state, IngestionState.FAILED)
         self.assertEqual(run.error_code, 'STORAGE_AUTH_ERROR')
+    
+    @patch('workers.tasks.queue_for_fetch._upload_to_storage')
+    @patch('workers.tasks.queue_for_fetch._fetch_from_api')
+    def test_storage_bucket_not_found_transitions_to_failed(self, mock_fetch, mock_upload):
+        """Test that StorageBucketNotFoundError transitions run to FAILED."""
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        # Mock successful fetch but bucket not found error
+        mock_fetch.return_value = b'{"ticker": "AAPL", "data": []}'
+        mock_upload.side_effect = StorageBucketNotFoundError("Bucket not found")
+        
+        # Execute task
+        with self.assertRaises(NonRetryableError):
+            fetch_stock_data(str(run.id), 'AAPL')
+        
+        # Verify run transitioned to FAILED
+        run.refresh_from_db()
+        self.assertEqual(run.state, IngestionState.FAILED)
+        self.assertEqual(run.error_code, 'STORAGE_BUCKET_NOT_FOUND')
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
