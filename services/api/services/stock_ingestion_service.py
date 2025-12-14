@@ -113,9 +113,9 @@ class StockIngestionService:
         
         try:
             stock = Stock.objects.get(ticker=ticker_upper)
-        except Stock.DoesNotExist:
-            logger.info(f"Stock not found: {ticker_upper}")
-            raise StockNotFoundError(f"Stock '{ticker_upper}' not found")
+        except Stock.DoesNotExist as err:
+            logger.warning("stock_not_found", extra={"ticker": ticker_upper})
+            raise StockNotFoundError(f"Stock '{ticker_upper}' not found") from err
 
         latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
         
@@ -174,9 +174,9 @@ class StockIngestionService:
         """
         try:
             return StockIngestionRun.objects.select_related('stock').get(id=run_id)
-        except StockIngestionRun.DoesNotExist:
+        except StockIngestionRun.DoesNotExist as err:
             logger.exception("ingestion_run_not_found", extra={"run_id": str(run_id)})
-            raise IngestionRunNotFoundError(f"Ingestion run '{run_id}' not found")
+            raise IngestionRunNotFoundError(f"Ingestion run '{run_id}' not found") from err
 
     @transaction.atomic
     def update_run_state(
@@ -212,9 +212,9 @@ class StockIngestionService:
         # Lock the row for update
         try:
             run = StockIngestionRun.objects.select_for_update().get(id=run_id)
-        except StockIngestionRun.DoesNotExist:
+        except StockIngestionRun.DoesNotExist as err:
             logger.exception("ingestion_run_not_found", extra={"run_id": str(run_id)})
-            raise IngestionRunNotFoundError(f"Ingestion run '{run_id}' not found")
+            raise IngestionRunNotFoundError(f"Ingestion run '{run_id}' not found") from err
         
         current_state = run.state
         

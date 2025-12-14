@@ -31,6 +31,17 @@ if APP_ENV in ["prod", "stage"] and not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = APP_ENV not in ["prod", "stage"]
 
+# Internationalization
+# https://docs.djangoproject.com/en/5.2/topics/i18n/
+
+LANGUAGE_CODE = "en-us"
+
+TIME_ZONE = "UTC"
+
+USE_I18N = True
+
+USE_TZ = True
+
 CORS_ORIGIN_ALLOW_ALL = False
 
 if APP_ENV in ["dev", "test"]:
@@ -177,7 +188,7 @@ if missing and APP_ENV in ["prod", "stage", "dev"]:
 if APP_ENV in ["prod", "stage", "dev"]:
     # Build Redis connection URL
     encoded_pw = quote(REDIS_PASSWORD or "", safe="")
-    redis_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    redis_url = f"redis://:{encoded_pw}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
     
     CACHES = {
         'default': {
@@ -205,6 +216,84 @@ else:
             }
         }
     }
+
+# Message Broker (RabbitMQ)
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST")
+RABBITMQ_PORT = os.environ.get("RABBITMQ_PORT", "5672")
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER")
+RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD")
+
+required_rabbitmq = {
+    "RABBITMQ_HOST": RABBITMQ_HOST,
+    "RABBITMQ_USER": RABBITMQ_USER,
+    "RABBITMQ_PASSWORD": RABBITMQ_PASSWORD,
+}
+
+missing = [name for name, val in required_rabbitmq.items() if not val]
+if missing and APP_ENV in ["prod", "stage", "dev"]:
+    raise ImproperlyConfigured(
+        f"Missing required RabbitMQ settings: {', '.join(missing)}"
+    )
+
+if APP_ENV in ["prod", "stage", "dev"]:
+    # Build RabbitMQ broker URL
+    encoded_pw = quote(RABBITMQ_PASSWORD or "", safe="")
+    BROKER_URL = f"amqp://{RABBITMQ_USER}:{encoded_pw}@{RABBITMQ_HOST}:{RABBITMQ_PORT}//"
+else:
+    # No broker for testing
+    BROKER_URL = None
+
+# ============================================
+# Celery Configuration
+# ============================================
+
+# Celery Broker (RabbitMQ)
+CELERY_BROKER_URL = BROKER_URL
+
+# Celery Results Backend (Redis)
+if APP_ENV in ["prod", "stage", "dev"]:
+    # Use Redis as results backend
+    encoded_pw = quote(REDIS_PASSWORD or "", safe="")
+    redis_url = f"redis://:{encoded_pw}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    CELERY_RESULT_BACKEND = redis_url
+else:
+    # Use Django DB backend for testing
+    CELERY_RESULT_BACKEND = 'django-db'
+
+# Celery task configuration
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+# Task execution settings
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes hard limit
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes soft limit
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Process one task at a time
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 50  # Restart worker after 50 tasks
+
+# Result backend settings
+CELERY_RESULT_EXTENDED = True  # Store additional task metadata
+CELERY_RESULT_EXPIRES = 3600  # Results expire after 1 hour
+
+# Broker connection settings
+CELERY_BROKER_CONNECTION_RETRY = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
+
+# ============================================
+# Worker-Specific Configuration
+# ============================================
+
+# External API configuration for fetching stock data
+STOCK_DATA_API_TIMEOUT = int(os.environ.get('STOCK_DATA_API_TIMEOUT', '300')) # 5 minutes
+STOCK_DATA_API_URL = os.environ.get('STOCK_DATA_API_URL', 'https://api.example.com/stock-data')
+STOCK_DATA_API_KEY = os.environ.get('STOCK_DATA_API_KEY', '')
+
+# S3/MinIO configuration for raw data storage (separate from static/media)
+STOCK_RAW_DATA_BUCKET = os.environ.get('STOCK_RAW_DATA_BUCKET', 'stock-raw-data')
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -395,16 +484,6 @@ REST_FRAMEWORK = {
 #     # OTHER SETTINGS
 # }
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
-LANGUAGE_CODE = "en-us"
-
-TIME_ZONE = "UTC"
-
-USE_I18N = True
-
-USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)

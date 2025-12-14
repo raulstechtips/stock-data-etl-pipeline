@@ -11,12 +11,14 @@ import logging
 from uuid import UUID
 
 from django.db import IntegrityError
+from celery.exceptions import CeleryError, OperationalError as CeleryOperationalError
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.models import IngestionState
 from api.serializers import (
     QueueForFetchRequestSerializer,
     StockIngestionRunSerializer,
@@ -29,6 +31,7 @@ from api.services.stock_ingestion_service import (
     InvalidStateTransitionError,
     StockNotFoundError,
 )
+from workers.tasks.queue_for_fetch import fetch_stock_data
 
 
 logger = logging.getLogger(__name__)
@@ -114,8 +117,9 @@ class QueueForFetchView(APIView):
         
         Returns:
             - 200: If an active run already exists (returns existing run)
-            - 201: If a new run was created
+            - 201: If a new run was created and queued successfully
             - 400: If the request is invalid
+            - 500: If failed to queue the task to message broker
         """
         serializer = QueueForFetchRequestSerializer(data=request.data)
         
@@ -167,24 +171,75 @@ class QueueForFetchView(APIView):
                 status=status.HTTP_409_CONFLICT
             )
         
-        response_serializer = StockIngestionRunSerializer(run)
-        
+        # If a new run was created, trigger the Celery task
         if created:
-            logger.info(
-                "Stock queued for fetch successfully - new run created",
-                extra={
-                    'ticker': ticker.upper(),
-                    'run_id': str(run.id),
-                    'requested_by': requested_by,
-                    'request_id': request_id
-                }
-            )
-            return Response(
-                response_serializer.data,
-                status=status.HTTP_201_CREATED
-            )
+            try:
+                # Send task to message broker
+                # Note: We call this AFTER the transaction commits to ensure
+                # the run exists in the database before the worker processes it
+                task_result = fetch_stock_data.delay(
+                    run_id=str(run.id),
+                    ticker=ticker
+                )
+
+                logger.info(
+                    "Stock queued for fetch successfully - new run created",
+                    extra={
+                        'ticker': ticker.upper(),
+                        'run_id': str(run.id),
+                        'task_id': task_result.id,
+                        'requested_by': requested_by,
+                        'request_id': request_id
+                    }
+                )
+                
+                response_serializer = StockIngestionRunSerializer(run)
+                return Response(
+                    response_serializer.data,
+                    status=status.HTTP_201_CREATED
+                )
+                
+            except (CeleryError, CeleryOperationalError) as e:
+                # Failed to send task to message broker
+                logger.exception(
+                    "Failed to queue fetch task for run",
+                    extra={
+                        'run_id': str(run.id),
+                        'ticker': ticker.upper(),
+                        'requested_by': requested_by,
+                        'request_id': request_id
+                    }
+                )
+                
+                # Transition the run to FAILED state since we can't process it
+                try:
+                    self.service.update_run_state(
+                        run_id=run.id,
+                        new_state=IngestionState.FAILED,
+                        error_code='BROKER_ERROR',
+                        error_message=f'Failed to queue task to message broker: {str(e)}'
+                    )
+                except Exception as state_error:
+                    logger.exception(
+                        "Failed to transition run to FAILED after broker error",
+                        extra={
+                            'run_id': str(run.id),
+                            'ticker': ticker.upper(),
+                            'requested_by': requested_by,
+                            'request_id': request_id,
+                        }
+                    )
+                
+                return Response(
+                    {
+                        'message': 'Failed to queue task to message broker',
+                        'code': 'BROKER_ERROR',
+                        'details': {'run_id': str(run.id)}
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
         else:
-            # Active run already exists
+            # Active run already exists, don't trigger a new task
             logger.info(
                 "Stock already queued - returning existing run",
                 extra={
@@ -194,6 +249,9 @@ class QueueForFetchView(APIView):
                     'requested_by': requested_by
                 }
             )
+            
+            response_serializer = StockIngestionRunSerializer(run)
+
             return Response(
                 response_serializer.data,
                 status=status.HTTP_200_OK

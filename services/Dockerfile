@@ -39,7 +39,8 @@ RUN apt-get -y update && \
         git \
         libpq-dev \
         postgresql-client-15 \
-        curl && \
+        curl \
+        netcat-openbsd && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy installed dependencies from builder
@@ -57,7 +58,9 @@ RUN git config --global --add safe.directory /workspace
 
 EXPOSE 8000
 
-RUN chmod +x /usr/src/app/scripts/wait_for_db.sh
+RUN chmod +x /usr/src/app/scripts/wait_for_dependencies.sh
 RUN chmod +x /usr/src/app/scripts/entrypoint.sh
+RUN chmod +x /usr/src/app/scripts/entrypoint.api.sh
+RUN chmod +x /usr/src/app/scripts/entrypoint.worker.sh
 
 ENTRYPOINT ["/usr/src/app/scripts/entrypoint.sh"]

@@ -102,15 +102,7 @@ This template guides feature implementation in Django-integrated microservices i
 - Log inputs/outputs for debugging
 - Handle graceful shutdown
 
-### Step 5: Containerization
-- Define Dockerfile if new container needed
-- Add dependencies to requirements file
-- Configure environment variables
-- Set up health checks
-- Define resource limits (memory, CPU)
-- Update docker-compose for local development
-
-### Step 6: Testing
+### Step 5: Testing
 - Write unit tests for core logic
 - Add integration tests with Django ORM
 - Test in containerized environment
@@ -118,7 +110,7 @@ This template guides feature implementation in Django-integrated microservices i
 - Test with realistic data volumes
 - Validate monitoring and logging
 
-### Step 7: Documentation
+### Step 6: Documentation
 - Add docstrings to all functions/classes
 - Document configuration options
 - Provide usage examples
@@ -145,27 +137,21 @@ This template guides feature implementation in Django-integrated microservices i
 - Django ORM integration code
 - Configuration files (if applicable)
 
-### 2. Container Configuration
-- Dockerfile or docker-compose updates
-- Environment variable definitions
-- Resource limits configuration
-
-### 3. Tests
+### 2. Tests
 - Unit tests for core logic
 - Integration tests with Django ORM
 - Container environment tests
 - Edge case coverage
 
-### 4. Documentation
+### 3. Documentation
 - Docstrings on all functions/classes
 - Usage examples and CLI help
 - Deployment instructions
 - Monitoring and alerting setup
 - Troubleshooting guide
 
-### 5. Deployment Artifacts
+### 4. Deployment Artifacts
 - Updated dependencies (requirements.txt, etc.)
 - Environment configuration
 - Scheduling configuration (cron, Celery beat, etc.)
 - Monitoring/alerting setup
-
