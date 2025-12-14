@@ -118,11 +118,21 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
         NonRetryableError: For permanent errors that should not be retried
     """
     service = StockIngestionService()
-    run_uuid = uuid.UUID(run_id)
     
     logger.info("Starting fetch task", extra={"run_id": run_id, "ticker": ticker})
     
     try:
+        # Validate and convert run_id to UUID
+        try:
+            run_uuid = uuid.UUID(run_id)
+        except ValueError as e:
+            logger.error(
+                "Invalid run_id format - not a valid UUID",
+                extra={"run_id": run_id, "ticker": ticker}
+            )
+            # Cannot call _transition_to_failed since run_uuid is invalid
+            raise NonRetryableError(f"Invalid run_id format: {run_id}") from e
+        
         # Step 1: Validate state and transition to FETCHING
         try:
             run = service.get_run_by_id(run_uuid)
@@ -283,13 +293,19 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
     
     except Exception as e:
         # Catch any unexpected errors and transition to FAILED
-        logger.exception("Unexpected error in fetch task", extra={"run_id": run_id})
+        logger.exception(
+            "Unexpected error in fetch task",
+            extra={"run_id": run_id, "ticker": ticker}
+        )
+        # Only attempt to transition to FAILED if we have a valid run_uuid
+        # (if UUID conversion failed, run_uuid won't be defined)
         try:
-            _transition_to_failed(
-                service, run_uuid,
-                "UNEXPECTED_ERROR",
-                f"Unexpected error: {type(e).__name__}: {str(e)}"
-            )
+            if 'run_uuid' in locals():
+                _transition_to_failed(
+                    service, run_uuid,
+                    "UNEXPECTED_ERROR",
+                    f"Unexpected error: {type(e).__name__}: {str(e)}"
+                )
         except Exception:
             logger.exception("Failed to transition to FAILED state", extra={"run_id": str(run_id)})
         
