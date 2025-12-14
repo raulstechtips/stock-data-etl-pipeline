@@ -237,7 +237,8 @@ if missing and APP_ENV in ["prod", "stage", "dev"]:
 
 if APP_ENV in ["prod", "stage", "dev"]:
     # Build RabbitMQ broker URL
-    BROKER_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}//"
+    encoded_pw = quote(RABBITMQ_PASSWORD or "", safe="")
+    BROKER_URL = f"amqp://{RABBITMQ_USER}:{encoded_pw}@{RABBITMQ_HOST}:{RABBITMQ_PORT}//"
 else:
     # No broker for testing
     BROKER_URL = None
