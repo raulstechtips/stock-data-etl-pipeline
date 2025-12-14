@@ -439,7 +439,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
         self.assertEqual(run.error_code, 'API_ERROR')
         self.assertIn('not valid JSON', run.error_message)
 
-@patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
+# @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
 class FetchStockDataInvalidInputTest(TransactionTestCase):
     """Tests for invalid input handling in fetch_stock_data task."""
     
@@ -450,7 +450,8 @@ class FetchStockDataInvalidInputTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_malformed_uuid_raises_non_retryable_error(self, mock_fetch, mock_upload, mock_discord_delay):
+    # def test_malformed_uuid_raises_non_retryable_error(self, mock_fetch, mock_upload, mock_discord_delay):
+    def test_malformed_uuid_raises_non_retryable_error(self, mock_fetch, mock_upload):
         """Test that a malformed run_id (invalid UUID) raises NonRetryableError."""
         # Execute task with malformed UUID
         malformed_run_id = 'not-a-valid-uuid'
@@ -468,7 +469,8 @@ class FetchStockDataInvalidInputTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_malformed_uuid_does_not_crash_with_various_formats(self, mock_fetch, mock_upload, mock_discord_delay):
+    # def test_malformed_uuid_does_not_crash_with_various_formats(self, mock_fetch, mock_upload, mock_discord_delay):
+    def test_malformed_uuid_does_not_crash_with_various_formats(self, mock_fetch, mock_upload):
         """Test that various malformed UUID formats are handled gracefully."""
         malformed_ids = [
             'not-a-uuid',
@@ -489,7 +491,8 @@ class FetchStockDataInvalidInputTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_valid_uuid_proceeds_normally(self, mock_fetch, mock_upload, mock_discord_delay):
+    # def test_valid_uuid_proceeds_normally(self, mock_fetch, mock_upload, mock_discord_delay):
+    def test_valid_uuid_proceeds_normally(self, mock_fetch, mock_upload):
         """Test that a valid UUID proceeds normally after the fix."""
         # Create run with valid UUID
         run = StockIngestionRun.objects.create(
