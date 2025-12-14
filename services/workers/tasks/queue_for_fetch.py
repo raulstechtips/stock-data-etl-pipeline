@@ -118,7 +118,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
     service = StockIngestionService()
     run_uuid = uuid.UUID(run_id)
     
-    logger.info(f"Starting fetch task for run {run_id}, ticker {ticker}")
+    logger.info("Starting fetch task", extra={"run_id": run_id, "ticker": ticker})
     
     try:
         # Step 1: Validate state and transition to FETCHING
@@ -130,8 +130,8 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                             IngestionState.SPARK_RUNNING, IngestionState.SPARK_FINISHED,
                             IngestionState.DONE]:
                 logger.info(
-                    f"Run {run_id} already in state {run.state}, skipping fetch. "
-                    f"This is likely a duplicate task execution."
+                    "Run already in terminal state, skipping fetch (likely duplicate task execution)",
+                    extra={"run_id": run_id, "state": run.state}
                 )
                 return FetchStockDataResult(
                     run_id=str(run_id),
@@ -145,7 +145,8 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             # Check if in FAILED state (should not retry from API)
             if run.state == IngestionState.FAILED:
                 logger.warning(
-                    f"Run {run_id} is in FAILED state, cannot proceed with fetch"
+                    "Run is in FAILED state, cannot proceed with fetch",
+                    extra={"run_id": run_id}
                 )
                 raise InvalidStateError(
                     f"Run {run_id} is in FAILED state and cannot be retried"
@@ -154,7 +155,8 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             # Must be in QUEUED_FOR_FETCH to start, or FETCHING if this is a retry
             if run.state not in [IngestionState.QUEUED_FOR_FETCH, IngestionState.FETCHING]:
                 logger.error(
-                    f"Run {run_id} is in invalid state {run.state} for fetch task"
+                    "Run is in invalid state for fetch task",
+                    extra={"run_id": run_id, "state": run.state}
                 )
                 raise InvalidStateError(
                     f"Run {run_id} must be in QUEUED_FOR_FETCH or FETCHING state, "
@@ -167,40 +169,42 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     run_id=run_uuid,
                     new_state=IngestionState.FETCHING
                 )
-                logger.info(f"Transitioned run {run_id} to FETCHING state")
+                logger.info("Transitioned run to FETCHING state", extra={"run_id": run_id})
         
         except IngestionRunNotFoundError as e:
-            logger.exception("ingestion_run_not_found", extra={"run_id": str(run_id)})
+            logger.exception("Ingestion run not found", extra={"run_id": str(run_id)})
             raise NonRetryableError(f"Ingestion run {run_id} not found") from e
         
         except (InvalidStateTransitionError, InvalidStateError) as e:
-            logger.exception("(invalid_state_transition_error, invalid_state)", extra={"run_id": str(run_id)})
+            logger.exception("Invalid state transition or invalid state", extra={"run_id": str(run_id)})
             raise NonRetryableError(str(e)) from e
         
         # Step 2: Fetch data from external API
         try:
-            logger.info(f"Fetching stock data for {ticker} from {settings.STOCK_DATA_API_URL}")
+            logger.info("Fetching stock data from API", extra={"ticker": ticker, "api_url": settings.STOCK_DATA_API_URL})
             
             file_data = _fetch_from_api(ticker)
             
             logger.info(
-                f"Successfully fetched {len(file_data)} bytes for {ticker}"
+                "Successfully fetched stock data",
+                extra={"ticker": ticker, "bytes": len(file_data)}
             )
         
         except (APIAuthenticationError, APINotFoundError, InvalidDataFormatError) as e:
             # Non-retryable API errors
-            logger.exception("(api_authentication_error, api_not_found, invalid_data_format)", extra={"ticker": str(ticker)})
+            logger.exception("Non-retryable API error", extra={"ticker": ticker})
             _transition_to_failed(service, run_uuid, "API_ERROR", str(e))
             raise NonRetryableError(str(e)) from e
         
         except (APITimeoutError, APIFetchError, APIRateLimitError) as e:
             # Retryable API errors - will be caught by autoretry_for
             logger.warning(
-                f"Retryable API error for {ticker} (attempt {self.request.retries + 1}/4): {e}"
+                "Retryable API error",
+                extra={"ticker": ticker, "attempt": self.request.retries + 1, "max_attempts": 4, "error": str(e)}
             )
             # Check if this is the last retry
             if self.request.retries >= 3:  # 0-indexed, so 3 = 4th attempt
-                logger.error(f"Max retries exceeded for run {run_id}, transitioning to FAILED")
+                logger.error("Max retries exceeded, transitioning to FAILED", extra={"run_id": run_id})
                 _transition_to_failed(
                     service, run_uuid,
                     "MAX_RETRIES_EXCEEDED",
@@ -210,30 +214,31 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
         
         # Step 3: Upload to S3/MinIO
         try:
-            logger.info(f"Uploading data for {ticker} to S3/MinIO")
+            logger.info("Uploading data to S3/MinIO", extra={"ticker": ticker})
             
             data_uri = _upload_to_storage(ticker, run_id, file_data)
             
-            logger.info(f"Successfully uploaded data for {ticker} to {data_uri}")
+            logger.info("Successfully uploaded data to storage", extra={"ticker": ticker, "data_uri": data_uri})
         
         except StorageAuthenticationError as e:
             # Non-retryable storage errors
-            logger.exception("storage_authentication_error", extra={"ticker": str(ticker)})
+            logger.exception("Storage authentication error", extra={"ticker": ticker})
             _transition_to_failed(service, run_uuid, "STORAGE_AUTH_ERROR", str(e))
             raise NonRetryableError(str(e)) from e
         
         except StorageBucketNotFoundError as e:
             # Non-retryable storage errors
-            logger.exception("storage_bucket_not_found", extra={"ticker": str(ticker)})
+            logger.exception("Storage bucket not found", extra={"ticker": ticker})
             _transition_to_failed(service, run_uuid, "STORAGE_BUCKET_NOT_FOUND", str(e))
             raise NonRetryableError(str(e)) from e
         except (StorageConnectionError, StorageUploadError) as e:
             # Retryable storage errors
             logger.warning(
-                f"Retryable storage error for {ticker} (attempt {self.request.retries + 1}/4): {e}"
+                "Retryable storage error",
+                extra={"ticker": ticker, "attempt": self.request.retries + 1, "max_attempts": 4, "error": str(e)}
             )
             if self.request.retries >= 3:
-                logger.error(f"Max retries exceeded for run {run_id}, transitioning to FAILED")
+                logger.error("Max retries exceeded, transitioning to FAILED", extra={"run_id": run_id})
                 _transition_to_failed(
                     service, run_uuid,
                     "MAX_RETRIES_EXCEEDED",
@@ -248,7 +253,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                 new_state=IngestionState.FETCHED,
                 raw_data_uri=data_uri
             )
-            logger.info(f"Successfully completed fetch for run {run_id}, ticker {ticker}")
+            logger.info("Successfully completed fetch", extra={"run_id": run_id, "ticker": ticker})
             
             return FetchStockDataResult(
                 run_id=str(run_id),
@@ -260,7 +265,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
         
         except (InvalidStateTransitionError, IngestionRunNotFoundError, DatabaseError) as e:
             # Database errors during final state transition
-            logger.exception("(invalid_state_transition_error, ingestion_run_not_found, database_error)", extra={"run_id": str(run_id)})
+            logger.exception("Failed to update run state", extra={"run_id": str(run_id)})
             # This is a critical error but shouldn't retry the entire fetch
             raise NonRetryableError(f"Failed to update run state: {str(e)}") from e
     
@@ -274,15 +279,15 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
     
     except Exception as e:
         # Catch any unexpected errors and transition to FAILED
-        logger.exception(f"Unexpected error in fetch task for run {run_id}: {e}")
+        logger.exception("Unexpected error in fetch task", extra={"run_id": run_id})
         try:
             _transition_to_failed(
                 service, run_uuid,
                 "UNEXPECTED_ERROR",
                 f"Unexpected error: {type(e).__name__}: {str(e)}"
             )
-        except Exception as state_error:
-            logger.exception("failed_to_transition_to_failed", extra={"run_id": str(run_id)})
+        except Exception:
+            logger.exception("Failed to transition to FAILED state", extra={"run_id": str(run_id)})
         
         raise NonRetryableError(f"Unexpected error: {str(e)}") from e
 
@@ -347,7 +352,7 @@ def _fetch_from_api(ticker: str) -> bytes:
             # Validate that response is valid JSON by attempting to parse it
             response.json()
         except ValueError as e:
-            logger.exception("invalid_data_format_error", extra={"ticker": str(ticker)})
+            logger.exception("Invalid data format - not valid JSON", extra={"ticker": ticker})
             raise InvalidDataFormatError(
                 f"Received data is not valid JSON: {str(e)}"
             ) from e
@@ -357,31 +362,31 @@ def _fetch_from_api(ticker: str) -> bytes:
         
         # Validate data is not empty
         if len(json_data) == 0:
-            logger.error("invalid_data_format_error", extra={"ticker": ticker})
+            logger.error("Invalid data format - empty response from API", extra={"ticker": ticker})
             raise InvalidDataFormatError("Received empty response from API")
         
         return json_data
     
     except Timeout as e:
-        logger.exception("api_timeout_error", extra={"ticker": str(ticker)})
+        logger.exception("API timeout error", extra={"ticker": ticker})
         raise APITimeoutError(f"API request timed out for {ticker}") from e
     
     except ConnectionError as e:
-        logger.exception("api_fetch_error", extra={"ticker": str(ticker)})
+        logger.exception("API connection error", extra={"ticker": ticker})
         raise APIFetchError(f"Connection error fetching data for {ticker}") from e
     
     except HTTPError as e:
         if e.response.status_code >= 500:
             # Server errors are retryable
-            logger.exception("api_fetch_error", extra={"ticker": str(ticker)})
+            logger.exception("API server error", extra={"ticker": ticker, "status_code": e.response.status_code})
             raise APIFetchError(f"API server error for {ticker}: {e}") from e
         else:
             # Client errors are not retryable (except specific ones handled above)
-            logger.exception("api_fetch_error", extra={"ticker": str(ticker)})
+            logger.exception("API client error", extra={"ticker": ticker, "status_code": e.response.status_code})
             raise APIFetchError(f"API client error for {ticker}: {e}") from e
     
     except RequestException as e:
-        logger.exception("api_fetch_error", extra={"ticker": str(ticker)})
+        logger.exception("API request error", extra={"ticker": ticker})
         raise APIFetchError(f"Error fetching data for {ticker}: {e}") from e
 
 
@@ -443,11 +448,11 @@ def _upload_to_storage(ticker: str, run_id: str, file_data: bytes) -> str:
             raise StorageUploadError(f"S3/MinIO error uploading file: {e.code}") from e
     
     except MinioException as e:
-        logger.exception("storage_connection_error", extra={"ticker": str(ticker)})
+        logger.exception("MinIO connection error", extra={"ticker": ticker})
         raise StorageConnectionError(f"MinIO connection error: {str(e)}") from e
     
     except Exception as e:
-        logger.exception("storage_upload_error", extra={"ticker": str(ticker)})
+        logger.exception("Unexpected storage upload error", extra={"ticker": ticker})
         raise StorageUploadError(f"Unexpected error uploading to storage: {str(e)}") from e
 
 
@@ -473,9 +478,9 @@ def _transition_to_failed(
             error_code=error_code,
             error_message=error_message
         )
-        logger.info(f"Transitioned run {run_id} to FAILED: {error_code}")
+        logger.info("Transitioned run to FAILED", extra={"run_id": str(run_id), "error_code": error_code})
     except InvalidStateTransitionError:
         # Run might already be in FAILED state from another process
-        logger.warning(f"Could not transition run {run_id} to FAILED (already in terminal state?)")
-    except Exception as e:
-        logger.exception("failed_to_transition_to_failed", extra={"run_id": str(run_id)})
+        logger.warning("Could not transition run to FAILED (already in terminal state?)", extra={"run_id": str(run_id)})
+    except Exception:
+        logger.exception("Failed to transition to FAILED state", extra={"run_id": str(run_id)})
