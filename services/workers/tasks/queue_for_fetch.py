@@ -130,7 +130,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                             IngestionState.SPARK_RUNNING, IngestionState.SPARK_FINISHED,
                             IngestionState.DONE]:
                 logger.info(
-                    "Run already in terminal state, skipping fetch (likely duplicate task execution)",
+                    "Run already past QUEUED_FOR_FETCH, skipping fetch (likely duplicate task execution)",
                     extra={"run_id": run_id, "state": run.state}
                 )
                 return FetchStockDataResult(
