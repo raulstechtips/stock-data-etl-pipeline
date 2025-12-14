@@ -824,9 +824,12 @@ class QueueForFetchAPITest(APITestCase):
         # Mock Celery broker error
         mock_delay.side_effect = CeleryOperationalError("Connection to broker failed")
         
+        # Use unique ticker to avoid conflicts with other tests (must be alphanumeric)
+        unique_ticker = 'BRKRTST'
+        
         response = self.client.post(
             self.url,
-            {'ticker': 'AAPL'},
+            {'ticker': unique_ticker},
             format='json'
         )
         
@@ -840,6 +843,8 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(run.state, IngestionState.FAILED)
         self.assertEqual(run.error_code, 'BROKER_ERROR')
         self.assertIn('broker', run.error_message.lower())
+        # Verify the correct stock was used
+        self.assertEqual(run.stock.ticker, unique_ticker)
 
     def test_queue_handles_integrity_error_race_condition(self):
         """Test that IntegrityError from race condition returns 409 Conflict."""

@@ -11,7 +11,7 @@ import logging
 from uuid import UUID
 
 from django.db import IntegrityError
-from celery.exceptions import CeleryError
+from celery.exceptions import CeleryError, OperationalError as CeleryOperationalError
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
@@ -199,11 +199,16 @@ class QueueForFetchView(APIView):
                     status=status.HTTP_201_CREATED
                 )
                 
-            except CeleryError as e:
+            except (CeleryError, CeleryOperationalError) as e:
                 # Failed to send task to message broker
-                logger.error(
-                    f"Failed to queue fetch task for run {run.id}: {e}",
-                    exc_info=True
+                logger.exception(
+                    "Failed to queue fetch task for run",
+                    extra={
+                        'run_id': str(run.id),
+                        'ticker': ticker.upper(),
+                        'requested_by': requested_by,
+                        'request_id': request_id
+                    }
                 )
                 
                 # Transition the run to FAILED state since we can't process it
