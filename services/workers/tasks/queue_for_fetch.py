@@ -95,7 +95,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
     This task implements the following workflow:
     1. Validate run state (must be QUEUED_FOR_FETCH)
     2. Transition to FETCHING state
-    3. Fetch .xlsx file from external API
+    3. Fetch JSON data from external API
     4. Upload file to S3/MinIO
     5. Transition to FETCHED state with data URI
     
