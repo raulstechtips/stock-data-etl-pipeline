@@ -114,7 +114,7 @@ class StockIngestionService:
         try:
             stock = Stock.objects.get(ticker=ticker_upper)
         except Stock.DoesNotExist as err:
-            logger.info(f"Stock not found: {ticker_upper}")
+            logger.warning("stock_not_found", extra={"ticker": ticker_upper})
             raise StockNotFoundError(f"Stock '{ticker_upper}' not found") from err
 
         latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
