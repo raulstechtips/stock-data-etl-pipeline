@@ -5,7 +5,7 @@ from typing import Callable
 from django.http import HttpResponse
 from django.http import HttpRequest
 
-def health_check_middleware(get_response: Callable) -> Callable:
+def health_check_middleware(get_response: Callable[[HttpRequest], HttpResponse]) -> Callable[[HttpRequest], HttpResponse]:
     """
     Middleware to handle health check requests at /health/.
     
