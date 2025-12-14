@@ -165,7 +165,6 @@ class StockIngestionRunModelTest(TestCase):
 
     def test_unique_constraint_prevents_multiple_active_runs(self):
         """Test that the unique constraint prevents multiple active runs for the same stock."""
-        from django.db import IntegrityError
         
         # Create first active run
         StockIngestionRun.objects.create(
@@ -848,7 +847,6 @@ class QueueForFetchAPITest(APITestCase):
 
     def test_queue_handles_integrity_error_race_condition(self):
         """Test that IntegrityError from race condition returns 409 Conflict."""
-        from django.db import IntegrityError
         
         # Mock the service to raise IntegrityError (simulating race condition)
         with patch('api.views.StockIngestionService') as MockService:
