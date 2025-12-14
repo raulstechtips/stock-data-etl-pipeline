@@ -8,9 +8,9 @@ This module configures Celery with:
 """
 
 import os
+import logging
 from celery import Celery
 
-import logging
 logger = logging.getLogger(__name__)
 
 # Set default Django settings module for Celery
