@@ -5,6 +5,7 @@ services:
         volumes:
             - ./services:/usr/src/app/
             - ~/.gitconfig:/root/.gitconfig:ro
+            - zsh_history_data:/root/.zsh_history
         ports:
             - 8000:8000
         env_file:
@@ -15,21 +16,33 @@ services:
             - rabbitmq
             - createbuckets
         network_mode: "host"
+        extra_hosts:
+            - "worker:127.0.0.1"
+            - "db:127.0.0.1"
+            - "redis:127.0.0.1"
+            - "rabbitmq:127.0.0.1"
+            - "minio:127.0.0.1"
 
-    # worker:
-    #     build: ./services
-    #     volumes:
-    #         - ./services:/usr/src/app/
-    #     env_file:
-    #         - ./.env
-    #     depends_on:
-    #         - db
-    #         - redis
-    #         - rabbitmq
-    #         - minio
-    #         - createbuckets
-    #     network_mode: "host"
-    #     command: ["/usr/src/app/scripts/entrypoint.worker.sh"]
+    worker:
+        build: ./services
+        volumes:
+            - ./services:/usr/src/app/
+        env_file:
+            - ./.env
+        depends_on:
+            - db
+            - redis
+            - rabbitmq
+            - minio
+            - createbuckets
+        network_mode: "host"
+        extra_hosts:
+            - "web:127.0.0.1"
+            - "db:127.0.0.1"
+            - "redis:127.0.0.1"
+            - "rabbitmq:127.0.0.1"
+            - "minio:127.0.0.1"
+        command: ["/usr/src/app/scripts/entrypoint.worker.sh"]
 
     db:
         image: postgres:17.5
@@ -92,6 +105,7 @@ services:
             - minio
 
 volumes:
+    zsh_history_data:
     postgres_data:
     redis_data:
     rabbitmq_data:
