@@ -39,7 +39,8 @@ RUN apt-get -y update && \
         git \
         libpq-dev \
         postgresql-client-15 \
-        curl && \
+        curl \
+        netcat-openbsd && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy installed dependencies from builder
