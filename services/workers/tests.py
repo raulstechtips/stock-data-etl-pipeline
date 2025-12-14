@@ -66,10 +66,10 @@ class FetchStockDataTaskTest(TransactionTestCase):
         result = fetch_stock_data(str(run.id), 'AAPL')
         
         # Verify result
-        self.assertEqual(result.run_id, str(run.id))
-        self.assertEqual(result.ticker, 'AAPL')
-        self.assertEqual(result.state, IngestionState.FETCHED)
-        self.assertFalse(result.skipped)
+        self.assertEqual(result['run_id'], str(run.id))
+        self.assertEqual(result['ticker'], 'AAPL')
+        self.assertEqual(result['state'], IngestionState.FETCHED)
+        self.assertFalse(result['skipped'])
         
         # Verify run state
         run.refresh_from_db()
@@ -96,10 +96,10 @@ class FetchStockDataTaskTest(TransactionTestCase):
         result = fetch_stock_data(str(run.id), 'AAPL')
         
         # Verify result
-        self.assertEqual(result.run_id, str(run.id))
-        self.assertEqual(result.ticker, 'AAPL')
-        self.assertEqual(result.state, IngestionState.FETCHED)
-        self.assertFalse(result.skipped)
+        self.assertEqual(result['run_id'], str(run.id))
+        self.assertEqual(result['ticker'], 'AAPL')
+        self.assertEqual(result['state'], IngestionState.FETCHED)
+        self.assertFalse(result['skipped'])
         
         # Verify run state transitioned to FETCHED
         run.refresh_from_db()
@@ -122,8 +122,8 @@ class FetchStockDataTaskTest(TransactionTestCase):
         result = fetch_stock_data(str(run.id), 'AAPL')
         
         # Verify task was skipped
-        self.assertTrue(result.skipped)
-        self.assertEqual(result.reason, 'already_processed')
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'already_processed')
         
         # Verify API was not called
         mock_fetch.assert_not_called()
@@ -144,9 +144,9 @@ class FetchStockDataTaskTest(TransactionTestCase):
         result = fetch_stock_data(str(run.id), 'AAPL')
         
         # Verify task was skipped
-        self.assertTrue(result.skipped)
-        self.assertEqual(result.reason, 'already_processed')
-        self.assertEqual(result.state, IngestionState.QUEUED_FOR_SPARK)
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'already_processed')
+        self.assertEqual(result['state'], IngestionState.QUEUED_FOR_SPARK)
         
         # Verify API was not called
         mock_fetch.assert_not_called()
@@ -167,9 +167,9 @@ class FetchStockDataTaskTest(TransactionTestCase):
         result = fetch_stock_data(str(run.id), 'AAPL')
         
         # Verify task was skipped
-        self.assertTrue(result.skipped)
-        self.assertEqual(result.reason, 'already_processed')
-        self.assertEqual(result.state, IngestionState.SPARK_RUNNING)
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'already_processed')
+        self.assertEqual(result['state'], IngestionState.SPARK_RUNNING)
         
         # Verify API was not called
         mock_fetch.assert_not_called()
@@ -190,9 +190,9 @@ class FetchStockDataTaskTest(TransactionTestCase):
         result = fetch_stock_data(str(run.id), 'AAPL')
         
         # Verify task was skipped
-        self.assertTrue(result.skipped)
-        self.assertEqual(result.reason, 'already_processed')
-        self.assertEqual(result.state, IngestionState.SPARK_FINISHED)
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'already_processed')
+        self.assertEqual(result['state'], IngestionState.SPARK_FINISHED)
         
         # Verify API was not called
         mock_fetch.assert_not_called()
@@ -213,9 +213,9 @@ class FetchStockDataTaskTest(TransactionTestCase):
         result = fetch_stock_data(str(run.id), 'AAPL')
         
         # Verify task was skipped
-        self.assertTrue(result.skipped)
-        self.assertEqual(result.reason, 'already_processed')
-        self.assertEqual(result.state, IngestionState.DONE)
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'already_processed')
+        self.assertEqual(result['state'], IngestionState.DONE)
         
         # Verify API was not called
         mock_fetch.assert_not_called()
