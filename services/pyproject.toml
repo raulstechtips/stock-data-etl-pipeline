@@ -1,7 +1,7 @@
 [project]
-name = "drf-api-template"
+name = "stock-data-etl-pipeline"
 version = "0.1.0"
-description = "DRF API template with necessary configurations for a production environment and developer experience"
+description = "A data pipeline to extract, transform and load historic financial statements"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -13,6 +13,7 @@ dependencies = [
     "ggshield==1.45.0",
     "gunicorn==23.0.0",
     "uvicorn==0.35.0",
+    "celery==5.6.0",
     "psycopg2-binary==2.9.10",
     "django-storages[s3]==1.14.2",
     "minio==7.2.20"
