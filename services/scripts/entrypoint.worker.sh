@@ -3,7 +3,7 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Wait for database to be ready
+# Wait for all dependencies (PostgreSQL, RabbitMQ, Redis) to be ready
 if [ -f "$SCRIPT_DIR/wait_for_dependencies.sh" ]; then
     "$SCRIPT_DIR/wait_for_dependencies.sh"
 else
@@ -24,7 +24,7 @@ if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ]; then
         --soft-time-limit=1500 \
         --prefetch-multiplier=1
 else
-    # Development configuration with autoreload
+    # Development configuration
     exec celery -A config worker \
         --loglevel=info \
         --concurrency=2 \
