@@ -201,15 +201,15 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             # Retryable API errors - will be caught by autoretry_for
             logger.warning(
                 "Retryable API error",
-                extra={"ticker": ticker, "attempt": self.request.retries + 1, "max_attempts": 4, "error": str(e)}
+                extra={"ticker": ticker, "attempt": self.request.retries + 1, "max_attempts": self.max_retries + 1, "error": str(e)}
             )
             # Check if this is the last retry
-            if self.request.retries >= 3:  # 0-indexed, so 3 = 4th attempt
-                logger.error("Max retries exceeded, transitioning to FAILED", extra={"run_id": run_id})
+            if self.request.retries >= self.max_retries:  # 0-indexed, so 3 = 4th attempt
+                logger.exception("Max retries exceeded, transitioning to FAILED", extra={"run_id": run_id})
                 _transition_to_failed(
                     service, run_uuid,
                     "MAX_RETRIES_EXCEEDED",
-                    f"Failed after 3 attempts: {str(e)}"
+                    f"Failed after {self.max_retries + 1} attempts: {str(e)}"
                 )
             raise  # Re-raise to trigger Celery retry
         
