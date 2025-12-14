@@ -7,11 +7,11 @@ This module contains comprehensive tests for:
 - API endpoints
 """
 
-import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from celery.exceptions import OperationalError as CeleryOperationalError
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.db import IntegrityError, close_old_connections
@@ -693,8 +693,14 @@ class QueueForFetchAPITest(APITestCase):
         """Set up test fixtures."""
         self.url = reverse('api:queue-for-fetch')
 
-    def test_queue_new_stock(self):
-        """Test queuing a new stock creates stock and run."""
+    @patch('api.views.fetch_stock_data.delay')
+    def test_queue_new_stock(self, mock_delay):
+        """Test queuing a new stock creates stock and run and triggers Celery task."""
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-123'
+        mock_delay.return_value = mock_task_result
+        
         response = self.client.post(
             self.url,
             {'ticker': 'AAPL', 'requested_by': 'test'},
@@ -707,9 +713,19 @@ class QueueForFetchAPITest(APITestCase):
         
         # Verify stock was created
         self.assertTrue(Stock.objects.filter(ticker='AAPL').exists())
+        
+        # Verify Celery task was called
+        mock_delay.assert_called_once()
+        call_args = mock_delay.call_args
+        self.assertEqual(call_args[1]['ticker'], 'AAPL')
 
-    def test_queue_existing_stock_no_active_run(self):
+    @patch('api.views.fetch_stock_data.delay')
+    def test_queue_existing_stock_no_active_run(self, mock_delay):
         """Test queuing an existing stock with no active run."""
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-123'
+        mock_delay.return_value = mock_task_result
+        
         stock = Stock.objects.create(ticker='AAPL')
         StockIngestionRun.objects.create(
             stock=stock,
@@ -724,9 +740,13 @@ class QueueForFetchAPITest(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['state'], 'QUEUED_FOR_FETCH')
+        
+        # Verify Celery task was called
+        mock_delay.assert_called_once()
 
-    def test_queue_returns_existing_active_run(self):
-        """Test that queuing returns existing active run."""
+    @patch('api.views.fetch_stock_data.delay')
+    def test_queue_returns_existing_active_run(self, mock_delay):
+        """Test that queuing returns existing active run and does not trigger task."""
         stock = Stock.objects.create(ticker='AAPL')
         existing_run = StockIngestionRun.objects.create(
             stock=stock,
@@ -742,6 +762,9 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(existing_run.id))
         self.assertEqual(response.data['state'], 'FETCHING')
+        
+        # Verify Celery task was NOT called (active run exists)
+        mock_delay.assert_not_called()
 
     def test_queue_validates_ticker(self):
         """Test that ticker validation works."""
@@ -758,8 +781,13 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
         self.assertIn('details', response.data['error'])
 
-    def test_queue_normalizes_ticker_to_uppercase(self):
+    @patch('api.views.fetch_stock_data.delay')
+    def test_queue_normalizes_ticker_to_uppercase(self, mock_delay):
         """Test that tickers are normalized to uppercase."""
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-123'
+        mock_delay.return_value = mock_task_result
+        
         response = self.client.post(
             self.url,
             {'ticker': 'aapl'},
@@ -769,8 +797,13 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['ticker'], 'AAPL')
 
-    def test_queue_with_all_optional_fields(self):
+    @patch('api.views.fetch_stock_data.delay')
+    def test_queue_with_all_optional_fields(self, mock_delay):
         """Test queuing with all optional fields provided."""
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-123'
+        mock_delay.return_value = mock_task_result
+        
         response = self.client.post(
             self.url,
             {
@@ -784,6 +817,29 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['requested_by'], 'data-pipeline')
         self.assertEqual(response.data['request_id'], 'req-2024-001')
+    
+    @patch('api.views.fetch_stock_data.delay')
+    def test_queue_broker_error_transitions_to_failed(self, mock_delay):
+        """Test that broker errors transition run to FAILED."""
+        # Mock Celery broker error
+        mock_delay.side_effect = CeleryOperationalError("Connection to broker failed")
+        
+        response = self.client.post(
+            self.url,
+            {'ticker': 'AAPL'},
+            format='json'
+        )
+        
+        # Should return 500 error
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn('error', response.data)
+        self.assertIn('run_id', response.data)
+        
+        # Verify run was created but transitioned to FAILED
+        run = StockIngestionRun.objects.get(id=response.data['run_id'])
+        self.assertEqual(run.state, IngestionState.FAILED)
+        self.assertEqual(run.error_code, 'BROKER_ERROR')
+        self.assertIn('broker', run.error_message.lower())
 
     def test_queue_handles_integrity_error_race_condition(self):
         """Test that IntegrityError from race condition returns 409 Conflict."""
