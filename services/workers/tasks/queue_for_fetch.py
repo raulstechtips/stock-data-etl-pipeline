@@ -230,7 +230,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
         except (StorageConnectionError, StorageUploadError) as e:
             # Retryable storage errors
             logger.warning(
-                f"Retryable storage error for {ticker} (attempt {self.request.retries + 1}/3): {e}"
+                f"Retryable storage error for {ticker} (attempt {self.request.retries + 1}/4): {e}"
             )
             if self.request.retries >= 3:
                 logger.error(f"Max retries exceeded for run {run_id}, transitioning to FAILED")
