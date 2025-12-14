@@ -433,7 +433,7 @@ class FetchStockDataRetryTest(TransactionTestCase):
         
         # Create a mock task with max retries
         task = fetch_stock_data
-        task.request.retries = 2  # Third attempt (0-indexed)
+        task.request.retries = 3  # Third attempt (0-indexed)
         
         # Execute task
         with self.assertRaises(APITimeoutError):
