@@ -12,8 +12,24 @@ services:
         depends_on:
             - db
             - redis
+            - rabbitmq
             - createbuckets
         network_mode: "host"
+
+    # worker:
+    #     build: ./services
+    #     volumes:
+    #         - ./services:/usr/src/app/
+    #     env_file:
+    #         - ./.env
+    #     depends_on:
+    #         - db
+    #         - redis
+    #         - rabbitmq
+    #         - minio
+    #         - createbuckets
+    #     network_mode: "host"
+    #     command: ["/usr/src/app/scripts/entrypoint.worker.sh"]
 
     db:
         image: postgres:17.5
@@ -32,7 +48,18 @@ services:
             - 6379:6379
         volumes:
             - redis_data:/data
-        command: redis-server --appendonly yes
+        command: redis-server --appendonly yes --requirepass hello_django
+
+    rabbitmq:
+        image: rabbitmq:4.2-management-alpine
+        ports:
+            - 5672:5672
+            - 15672:15672
+        volumes:
+            - rabbitmq_data:/var/lib/rabbitmq
+        environment:
+            - RABBITMQ_DEFAULT_USER=hello_django
+            - RABBITMQ_DEFAULT_PASS=hello_django
 
     minio:
         image: minio/minio:latest
@@ -57,8 +84,9 @@ services:
             done &&
             mc ls myminio/static >/dev/null 2>&1 || mc mb myminio/static &&
             mc ls myminio/media >/dev/null 2>&1 || mc mb myminio/media &&
+            mc ls myminio/stock-raw-data >/dev/null 2>&1 || mc mb myminio/stock-raw-data &&
             mc anonymous set download myminio/static &&
-            echo 'Buckets created successfully - static is public, media is private'
+            echo 'Buckets created successfully - static is public, media and stock-raw-data are private'
             "
         depends_on:
             - minio
@@ -66,4 +94,5 @@ services:
 volumes:
     postgres_data:
     redis_data:
+    rabbitmq_data:
     minio_data:
