@@ -439,6 +439,76 @@ class FetchStockDataTaskTest(TransactionTestCase):
         self.assertEqual(run.error_code, 'API_ERROR')
         self.assertIn('not valid JSON', run.error_message)
 
+@patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
+class FetchStockDataInvalidInputTest(TransactionTestCase):
+    """Tests for invalid input handling in fetch_stock_data task."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.service = StockIngestionService()
+        self.stock = Stock.objects.create(ticker='AAPL')
+    
+    @patch('workers.tasks.queue_for_fetch._upload_to_storage')
+    @patch('workers.tasks.queue_for_fetch._fetch_from_api')
+    def test_malformed_uuid_raises_non_retryable_error(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that a malformed run_id (invalid UUID) raises NonRetryableError."""
+        # Execute task with malformed UUID
+        malformed_run_id = 'not-a-valid-uuid'
+        
+        with self.assertRaises(NonRetryableError) as context:
+            fetch_stock_data(malformed_run_id, 'AAPL')
+        
+        # Verify error message mentions invalid format
+        self.assertIn('Invalid run_id format', str(context.exception))
+        self.assertIn(malformed_run_id, str(context.exception))
+        
+        # Verify that API and storage methods were never called
+        mock_fetch.assert_not_called()
+        mock_upload.assert_not_called()
+    
+    @patch('workers.tasks.queue_for_fetch._upload_to_storage')
+    @patch('workers.tasks.queue_for_fetch._fetch_from_api')
+    def test_malformed_uuid_does_not_crash_with_various_formats(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that various malformed UUID formats are handled gracefully."""
+        malformed_ids = [
+            'not-a-uuid',
+            '12345',
+            'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+            '',
+            'null',
+            '{}',
+            '[]',
+        ]
+        
+        for malformed_id in malformed_ids:
+            with self.subTest(malformed_id=malformed_id):
+                with self.assertRaises(NonRetryableError) as context:
+                    fetch_stock_data(malformed_id, 'AAPL')
+                
+                self.assertIn('Invalid run_id format', str(context.exception))
+    
+    @patch('workers.tasks.queue_for_fetch._upload_to_storage')
+    @patch('workers.tasks.queue_for_fetch._fetch_from_api')
+    def test_valid_uuid_proceeds_normally(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that a valid UUID proceeds normally after the fix."""
+        # Create run with valid UUID
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        # Mock successful API fetch and upload
+        mock_fetch.return_value = b'{"ticker": "AAPL", "data": []}'
+        mock_upload.return_value = f's3://bucket/AAPL/{run.id}.json'
+        
+        # Execute task with valid UUID string
+        result = fetch_stock_data(str(run.id), 'AAPL')
+        
+        # Verify successful execution
+        self.assertEqual(result['run_id'], str(run.id))
+        self.assertEqual(result['state'], IngestionState.FETCHED)
+        self.assertFalse(result['skipped'])
+
 
 class FetchStockDataRetryTest(TransactionTestCase):
     """Tests for retry logic in fetch_stock_data task."""
