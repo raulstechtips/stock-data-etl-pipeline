@@ -12,6 +12,7 @@ queued. It performs the following steps:
 import io
 import logging
 import uuid
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from typing import Optional
 
@@ -408,12 +409,15 @@ def _upload_to_storage(ticker: str, run_id: str, file_data: bytes) -> str:
         StorageUploadError: For other upload errors
     """
     try:
+        parsed = urlparse(settings.AWS_S3_ENDPOINT_URL)
+        endpoint = parsed.netloc or parsed.path
+        secure = parsed.scheme == 'https'
         # Initialize MinIO client
         client = Minio(
-            endpoint=settings.AWS_S3_ENDPOINT_URL.replace('http://', '').replace('https://', ''),
+            endpoint=endpoint,
             access_key=settings.AWS_ACCESS_KEY_ID,
             secret_key=settings.AWS_SECRET_ACCESS_KEY,
-            secure=settings.AWS_S3_ENDPOINT_URL.startswith('https://')
+            secure=secure
         )
         
         # Ensure bucket exists
