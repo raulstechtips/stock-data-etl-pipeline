@@ -227,15 +227,14 @@ class QueueForFetchView(APIView):
                             'ticker': ticker.upper(),
                             'requested_by': requested_by,
                             'request_id': request_id,
-                            'error': str(state_error)
                         }
                     )
                 
                 return Response(
                     {
-                        'error': 'Failed to queue task to message broker',
-                        'detail': str(e),
-                        'run_id': str(run.id)
+                        'message': 'Failed to queue task to message broker',
+                        'code': 'BROKER_ERROR',
+                        'details': {'run_id': str(run.id)}
                     },
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
