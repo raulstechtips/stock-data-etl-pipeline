@@ -220,8 +220,15 @@ class QueueForFetchView(APIView):
                         error_message=f'Failed to queue task to message broker: {str(e)}'
                     )
                 except Exception as state_error:
-                    logger.error(
-                        f"Failed to transition run {run.id} to FAILED after broker error: {state_error}"
+                    logger.exception(
+                        "Failed to transition run to FAILED after broker error",
+                        extra={
+                            'run_id': str(run.id),
+                            'ticker': ticker.upper(),
+                            'requested_by': requested_by,
+                            'request_id': request_id,
+                            'error': str(state_error)
+                        }
                     )
                 
                 return Response(
