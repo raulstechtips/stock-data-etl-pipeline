@@ -46,17 +46,14 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Create non-root user for running the application
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-COPY . .
+COPY --chown=appuser:appuser . .
 
 EXPOSE 8000
 
-RUN chmod +x /usr/src/app/scripts/wait_for_dependencies.sh
-RUN chmod +x /usr/src/app/scripts/entrypoint.sh
-RUN chmod +x /usr/src/app/scripts/entrypoint.api.sh
-RUN chmod +x /usr/src/app/scripts/entrypoint.worker.sh
-
-# Change ownership of application files to non-root user
-RUN chown -R appuser:appuser /usr/src/app
+RUN chmod +x /usr/src/app/scripts/wait_for_dependencies.sh \
+    /usr/src/app/scripts/entrypoint.sh \
+    /usr/src/app/scripts/entrypoint.api.sh \
+    /usr/src/app/scripts/entrypoint.worker.sh
 
 # Switch to non-root user
 USER appuser
