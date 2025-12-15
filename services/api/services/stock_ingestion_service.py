@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from django.db import transaction, IntegrityError
+from django.db import transaction
 from django.utils import timezone
 
 from api.models import IngestionState, Stock, StockIngestionRun
@@ -259,6 +259,10 @@ class StockIngestionService:
             f"Updated run {run_id} state: {current_state} -> {new_state}"
         )
         
+        # Schedule Discord notification to be sent after transaction commits
+        # This ensures notification is only sent if the state update succeeds
+        transaction.on_commit(lambda: self._send_discord_notification(run_id, run.stock.ticker, new_state))
+        
         return run
 
     @transaction.atomic
@@ -325,4 +329,50 @@ class StockIngestionService:
             f"Created new ingestion run for {ticker_upper}: "
             f"run_id={new_run.id}, request_id={request_id}"
         )
+        
+        # Schedule Discord notification for initial state after transaction commits
+        transaction.on_commit(
+            lambda: self._send_discord_notification(
+                new_run.id,
+                ticker_upper,
+                IngestionState.QUEUED_FOR_FETCH
+            )
+        )
+        
         return new_run, True
+    
+    def _send_discord_notification(self, run_id: uuid.UUID, ticker: str, state: str) -> None:
+        """
+        Send a Discord notification for a state change.
+        
+        This method is called via transaction.on_commit() to ensure the notification
+        is only sent after the database transaction commits successfully.
+        
+        The notification is sent asynchronously via Celery task.
+        
+        Args:
+            run_id: UUID of the ingestion run
+            ticker: Stock ticker symbol
+            state: Current state of the run
+        """
+        try:
+            # Import here to avoid circular imports
+            from workers.tasks import send_discord_notification
+            
+            # Queue the notification task asynchronously
+            send_discord_notification.delay(
+                run_id=str(run_id),
+                ticker=ticker,
+                state=state
+            )
+            
+            logger.info(
+                f"Queued Discord notification",
+                extra={"run_id": str(run_id), "ticker": ticker, "state": state}
+            )
+        except Exception:
+            # Log error but don't fail the transaction
+            logger.exception(
+                f"Failed to queue Discord notification",
+                extra={"run_id": str(run_id), "ticker": ticker, "state": state}
+            )
