@@ -27,12 +27,12 @@ class NonRetryableError(Exception):
 
 
 # API Fetch Errors
-class APIFetchError(RetryableError):
+class APIFetchError(NonRetryableError):
     """Error fetching data from the external API (retryable)."""
     pass
 
 
-class APITimeoutError(RetryableError):
+class APITimeoutError(NonRetryableError):
     """API request timed out (retryable)."""
     pass
 
@@ -52,18 +52,18 @@ class APIClientError(NonRetryableError):
     pass
 
 
-class APIRateLimitError(RetryableError):
+class APIRateLimitError(NonRetryableError):
     """API rate limit exceeded (retryable with backoff)."""
     pass
 
 
 # Storage Errors
-class StorageUploadError(RetryableError):
+class StorageUploadError(NonRetryableError):
     """Error uploading file to S3/MinIO (retryable)."""
     pass
 
 
-class StorageConnectionError(RetryableError):
+class StorageConnectionError(NonRetryableError):
     """Connection to S3/MinIO failed (retryable)."""
     pass
 

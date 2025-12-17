@@ -14,26 +14,24 @@ based on the ingestion state:
 
 import logging
 import uuid
-from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import TypedDict, NotRequired
 
 import requests
-from celery import Task, shared_task
+from celery import shared_task
 from django.conf import settings
 from requests.exceptions import ConnectionError, HTTPError, RequestException, Timeout
 
 from api.models import IngestionState, StockIngestionRun
 from workers.exceptions import (
     NonRetryableError,
-    RetryableError,
 )
+from workers.tasks.base import BaseTask
 
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DiscordNotificationResult:
+class DiscordNotificationResult(TypedDict):
     """
     Result object returned by the send_discord_notification task.
     
@@ -49,27 +47,11 @@ class DiscordNotificationResult:
     ticker: str
     state: str
     notification_sent: bool
-    skipped: bool = False
-    reason: Optional[str] = None
+    skipped: bool
+    reason: NotRequired[str]
 
 
-class DiscordNotificationTask(Task):
-    """
-    Custom Celery task class for Discord notifications with retry configuration.
-    
-    This provides automatic retry logic for transient failures when sending
-    Discord notifications.
-    """
-    
-    # Retry configuration
-    autoretry_for = (RetryableError,)
-    retry_kwargs = {'max_retries': 3}
-    retry_backoff = True  # Exponential backoff
-    retry_backoff_max = 300  # Max 5 minutes between retries
-    retry_jitter = True  # Add randomness to prevent thundering herd
-
-
-@shared_task(bind=True, base=DiscordNotificationTask, name='workers.tasks.send_discord_notification')
+@shared_task(bind=True, base=BaseTask, name='workers.tasks.send_discord_notification')
 def send_discord_notification(
     self,
     run_id: str,
@@ -96,8 +78,7 @@ def send_discord_notification(
         DiscordNotificationResult: Result object with notification status
         
     Raises:
-        RetryableError: For transient errors that should be retried
-        NonRetryableError: For permanent errors that should not be retried
+        NonRetryableError: For all errors
     """
     logger.info(
         "Starting Discord notification task",
@@ -106,11 +87,11 @@ def send_discord_notification(
     
     # Check if Discord webhook is configured
     if not settings.DISCORD_WEBHOOK_URL:
-        logger.info(
+        logger.warning(
             "Discord webhook not configured, skipping notification",
             extra={"run_id": run_id}
         )
-        result = DiscordNotificationResult(
+        return DiscordNotificationResult(
             run_id=run_id,
             ticker=ticker,
             state=state,
@@ -118,7 +99,6 @@ def send_discord_notification(
             skipped=True,
             reason='webhook_not_configured'
         )
-        return asdict(result)
     
     try:
         # Build Discord webhook URL with thread ID if configured
@@ -149,29 +129,13 @@ def send_discord_notification(
             extra={"run_id": run_id, "ticker": ticker, "state": state}
         )
         
-        result = DiscordNotificationResult(
+        return DiscordNotificationResult(
             run_id=run_id,
             ticker=ticker,
             state=state,
             notification_sent=True,
             skipped=False
         )
-        return asdict(result)
-    
-    except RetryableError:
-        # Log retry attempt
-        logger.warning(
-            "Retryable error sending Discord notification",
-            extra={
-                "run_id": run_id,
-                "ticker": ticker,
-                "state": state,
-                "attempt": self.request.retries + 1,
-                "max_attempts": self.max_retries + 1
-            }
-        )
-        # Let retryable errors propagate so Celery can retry
-        raise
     
     except NonRetryableError as e:
         # Log non-retryable error but don't fail the task
@@ -180,7 +144,7 @@ def send_discord_notification(
             extra={"run_id": run_id, "ticker": ticker, "state": state, "error": str(e)}
         )
         # Return a result indicating failure but don't raise
-        result = DiscordNotificationResult(
+        return DiscordNotificationResult(
             run_id=run_id,
             ticker=ticker,
             state=state,
@@ -188,7 +152,6 @@ def send_discord_notification(
             skipped=False,
             reason='non_retryable_error'
         )
-        return asdict(result)
     
     except Exception as e:
         # Catch any unexpected errors
@@ -197,7 +160,7 @@ def send_discord_notification(
             extra={"run_id": run_id, "ticker": ticker, "state": state}
         )
         # Return a result indicating failure
-        result = DiscordNotificationResult(
+        return DiscordNotificationResult(
             run_id=run_id,
             ticker=ticker,
             state=state,
@@ -205,7 +168,6 @@ def send_discord_notification(
             skipped=False,
             reason='unexpected_error'
         )
-        return asdict(result)
 
 
 def _create_embed(run_id: str, ticker: str, state: str) -> dict:
@@ -415,8 +377,7 @@ def _send_to_discord(webhook_url: str, embed: dict) -> None:
         embed: Discord embed object
         
     Raises:
-        RetryableError: For transient errors (timeouts, rate limits, server errors)
-        NonRetryableError: For permanent errors (authentication, invalid webhook)
+        NonRetryableError: For all errors
     """
     try:
         # Prepare payload
@@ -445,7 +406,7 @@ def _send_to_discord(webhook_url: str, embed: dict) -> None:
         if response.status_code == 429:
             # Rate limited - this is retryable
             logger.warning("Discord rate limit exceeded")
-            raise RetryableError("Discord rate limit exceeded")
+            raise NonRetryableError("Discord rate limit exceeded")
         
         # Raise for other HTTP errors
         response.raise_for_status()
@@ -454,17 +415,17 @@ def _send_to_discord(webhook_url: str, embed: dict) -> None:
     
     except Timeout as e:
         logger.warning("Discord webhook request timed out")
-        raise RetryableError("Discord webhook request timed out") from e
+        raise NonRetryableError("Discord webhook request timed out") from e
     
     except ConnectionError as e:
         logger.warning("Discord webhook connection error")
-        raise RetryableError("Discord webhook connection error") from e
+        raise NonRetryableError("Discord webhook connection error") from e
     
     except HTTPError as e:
         if e.response.status_code >= 500:
             # Server errors are retryable
             logger.warning("Discord server error", extra={"status_code": e.response.status_code})
-            raise RetryableError(f"Discord server error: {e.response.status_code}") from e
+            raise NonRetryableError(f"Discord server error: {e.response.status_code}") from e
         else:
             # Client errors (except specific ones handled above) are not retryable
             logger.error("Discord client error", extra={"status_code": e.response.status_code})
@@ -472,4 +433,4 @@ def _send_to_discord(webhook_url: str, embed: dict) -> None:
     
     except RequestException as e:
         logger.exception("Discord webhook request error")
-        raise RetryableError(f"Discord webhook request error: {str(e)}") from e
+        raise NonRetryableError(f"Discord webhook request error: {str(e)}") from e

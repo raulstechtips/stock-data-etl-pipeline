@@ -246,6 +246,10 @@ class StockIngestionService:
                 )
             run.error_code = error_code
             run.error_message = error_message
+
+            # Schedule Discord notification to be sent after transaction commits
+            # This ensures notification is only sent if the state update succeeds
+            transaction.on_commit(lambda: self._send_discord_notification(run_id, run.stock.ticker, new_state))
         
         # Update data URIs if provided
         if raw_data_uri is not None:
@@ -258,10 +262,6 @@ class StockIngestionService:
         logger.info(
             f"Updated run {run_id} state: {current_state} -> {new_state}"
         )
-        
-        # Schedule Discord notification to be sent after transaction commits
-        # This ensures notification is only sent if the state update succeeds
-        transaction.on_commit(lambda: self._send_discord_notification(run_id, run.stock.ticker, new_state))
         
         return run
 
@@ -329,15 +329,7 @@ class StockIngestionService:
             f"Created new ingestion run for {ticker_upper}: "
             f"run_id={new_run.id}, request_id={request_id}"
         )
-        
-        # Schedule Discord notification for initial state after transaction commits
-        transaction.on_commit(
-            lambda: self._send_discord_notification(
-                new_run.id,
-                ticker_upper,
-                IngestionState.QUEUED_FOR_FETCH
-            )
-        )
+
         
         return new_run, True
     

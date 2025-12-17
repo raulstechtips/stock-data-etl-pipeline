@@ -337,8 +337,8 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_rate_limit_error_retries(self, mock_fetch, mock_upload, mock_discord_delay):
-        """Test that API rate limit (429) errors trigger retry."""
+    def test_api_rate_limit_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that API rate limit (429) errors transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
             state=IngestionState.QUEUED_FOR_FETCH
@@ -347,18 +347,18 @@ class FetchStockDataTaskTest(TransactionTestCase):
         # Mock API rate limit error
         mock_fetch.side_effect = APIRateLimitError("Rate limit exceeded")
         
-        # Execute task - should raise retryable error
-        with self.assertRaises(APIRateLimitError):
+        # Execute task - should raise non-retryable error
+        with self.assertRaises(NonRetryableError):
             fetch_stock_data(str(run.id), 'AAPL')
         
-        # Verify run is still in FETCHING state (not FAILED yet)
+        # Verify run has failed state
         run.refresh_from_db()
-        self.assertEqual(run.state, IngestionState.FETCHING)
+        self.assertEqual(run.state, IngestionState.FAILED)
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_connection_error_retries(self, mock_fetch, mock_upload, mock_discord_delay):
-        """Test that API connection errors trigger retry."""
+    def test_api_connection_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that API connection errors transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
             state=IngestionState.QUEUED_FOR_FETCH
@@ -367,18 +367,18 @@ class FetchStockDataTaskTest(TransactionTestCase):
         # Mock API fetch error (wraps connection errors)
         mock_fetch.side_effect = APIFetchError("Connection failed")
         
-        # Execute task - should raise retryable error
-        with self.assertRaises(APIFetchError):
+        # Execute task - should raise non-retryable error
+        with self.assertRaises(NonRetryableError):
             fetch_stock_data(str(run.id), 'AAPL')
         
-        # Verify run is still in FETCHING state (not FAILED yet)
+        # Verify run has failed state
         run.refresh_from_db()
-        self.assertEqual(run.state, IngestionState.FETCHING)
+        self.assertEqual(run.state, IngestionState.FAILED)
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_server_error_retries(self, mock_fetch, mock_upload, mock_discord_delay):
-        """Test that API server errors (500+) trigger retry."""
+    def test_api_server_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that API server errors (500+) transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
             state=IngestionState.QUEUED_FOR_FETCH
@@ -387,13 +387,13 @@ class FetchStockDataTaskTest(TransactionTestCase):
         # Mock API server error
         mock_fetch.side_effect = APIFetchError("Server error: 500")
         
-        # Execute task - should raise retryable error
-        with self.assertRaises(APIFetchError):
+        # Execute task - should raise non-retryable error
+        with self.assertRaises(NonRetryableError):
             fetch_stock_data(str(run.id), 'AAPL')
         
-        # Verify run is still in FETCHING state (not FAILED yet)
+        # Verify run has failed state
         run.refresh_from_db()
-        self.assertEqual(run.state, IngestionState.FETCHING)
+        self.assertEqual(run.state, IngestionState.FAILED)
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
@@ -523,8 +523,8 @@ class FetchStockDataRetryTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_timeout_retries(self, mock_fetch, mock_upload, mock_discord_delay):
-        """Test that API timeout errors trigger retry."""
+    def test_api_timeout_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that API timeout errors transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
             state=IngestionState.QUEUED_FOR_FETCH
@@ -537,14 +537,18 @@ class FetchStockDataRetryTest(TransactionTestCase):
         task = fetch_stock_data
         task.request.retries = 0  # First attempt
         
-        # Execute task - should raise the retryable error
-        with self.assertRaises(APITimeoutError):
+        # Execute task - should raise non-retryable error
+        with self.assertRaises(NonRetryableError):
             fetch_stock_data(str(run.id), 'AAPL')
+        
+        # Verify run has failed state
+        run.refresh_from_db()
+        self.assertEqual(run.state, IngestionState.FAILED)
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_storage_upload_error_retries(self, mock_fetch, mock_upload, mock_discord_delay):
-        """Test that storage upload errors trigger retry."""
+    def test_storage_upload_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test that storage upload errors transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
             state=IngestionState.QUEUED_FOR_FETCH
@@ -558,35 +562,14 @@ class FetchStockDataRetryTest(TransactionTestCase):
         task = fetch_stock_data
         task.request.retries = 0
         
-        # Execute task - should raise the retryable error
-        with self.assertRaises(StorageUploadError):
-            fetch_stock_data(str(run.id), 'AAPL')
-    
-    @patch('workers.tasks.queue_for_fetch._upload_to_storage')
-    @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_max_retries_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
-        """Test that exceeding max retries transitions to FAILED."""
-        run = StockIngestionRun.objects.create(
-            stock=self.stock,
-            state=IngestionState.QUEUED_FOR_FETCH
-        )
-        
-        # Mock API timeout error
-        mock_fetch.side_effect = APITimeoutError("Request timed out")
-        
-        # Create a mock task with max retries
-        task = fetch_stock_data
-        task.request.retries = 3  # Third attempt (0-indexed)
-        
-        # Execute task
-        with self.assertRaises(APITimeoutError):
+        # Execute task - should raise non-retryable error
+        with self.assertRaises(NonRetryableError):
             fetch_stock_data(str(run.id), 'AAPL')
         
-        # Verify run transitioned to FAILED
+        # Verify run has failed state
         run.refresh_from_db()
         self.assertEqual(run.state, IngestionState.FAILED)
-        self.assertEqual(run.error_code, 'MAX_RETRIES_EXCEEDED')
-
+    
 
 # =============================================================================
 # Discord Notification Task Tests
@@ -721,30 +704,38 @@ class SendDiscordNotificationTaskTest(TransactionTestCase):
         self.assertEqual(result['reason'], 'webhook_not_configured')
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
-    def test_discord_timeout_raises_retryable_error(self, mock_post):
-        """Test that Discord timeout raises retryable error."""
+    def test_discord_timeout_non_retryable(self, mock_post):
+        """Test that Discord timeout errors are handled gracefully."""
         # Mock timeout error
         mock_post.side_effect = Timeout("Request timed out")
         
-        # Execute task - should raise retryable error
-        with self.assertRaises(RetryableError):
-            send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        # Execute task - should return result indicating failure
+        result = send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        
+        # Verify result indicates failure
+        self.assertFalse(result['notification_sent'])
+        self.assertFalse(result['skipped'])
+        self.assertEqual(result['reason'], 'non_retryable_error')
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
-    def test_discord_rate_limit_raises_retryable_error(self, mock_post):
-        """Test that Discord rate limit raises retryable error."""
+    def test_discord_rate_limit_non_retryable(self, mock_post):
+        """Test that Discord rate limit errors are handled gracefully."""
         # Mock rate limit response (429)
         mock_response = Mock()
         mock_response.status_code = 429
         mock_post.return_value = mock_response
         
-        # Execute task - should raise retryable error
-        with self.assertRaises(RetryableError):
-            send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        # Execute task - should return result indicating failure
+        result = send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        
+        # Verify result indicates failure
+        self.assertFalse(result['notification_sent'])
+        self.assertFalse(result['skipped'])
+        self.assertEqual(result['reason'], 'non_retryable_error')
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
-    def test_discord_server_error_raises_retryable_error(self, mock_post):
-        """Test that Discord server errors raise retryable error."""
+    def test_discord_server_error_non_retryable(self, mock_post):
+        """Test that Discord server errors are handled gracefully."""
         # Mock server error response (500)
         mock_response = Mock()
         mock_response.status_code = 500
@@ -753,9 +744,13 @@ class SendDiscordNotificationTaskTest(TransactionTestCase):
         )
         mock_post.return_value = mock_response
         
-        # Execute task - should raise retryable error
-        with self.assertRaises(RetryableError):
-            send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        # Execute task - should return result indicating failure
+        result = send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        
+        # Verify result indicates failure
+        self.assertFalse(result['notification_sent'])
+        self.assertFalse(result['skipped'])
+        self.assertEqual(result['reason'], 'non_retryable_error')
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
     def test_discord_authentication_error_non_retryable(self, mock_post):
@@ -790,14 +785,18 @@ class SendDiscordNotificationTaskTest(TransactionTestCase):
         self.assertEqual(result['reason'], 'non_retryable_error')
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
-    def test_discord_connection_error_raises_retryable_error(self, mock_post):
-        """Test that connection errors raise retryable error."""
+    def test_discord_connection_error_non_retryable(self, mock_post):
+        """Test that connection errors are handled gracefully."""
         # Mock connection error
         mock_post.side_effect = ConnectionError("Connection failed")
         
-        # Execute task - should raise retryable error
-        with self.assertRaises(RetryableError):
-            send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        # Execute task - should return result indicating failure
+        result = send_discord_notification(str(self.run.id), 'AAPL', IngestionState.DONE)
+        
+        # Verify result indicates failure
+        self.assertFalse(result['notification_sent'])
+        self.assertFalse(result['skipped'])
+        self.assertEqual(result['reason'], 'non_retryable_error')
 
 
 @patch('workers.tasks.send_discord_notification.requests.post')
@@ -811,8 +810,8 @@ class DiscordNotificationIntegrationTest(TransactionTestCase):
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
     @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
-    def test_notification_sent_on_state_update(self, mock_delay, mock_post):
-        """Test that notification is queued when state is updated."""
+    def test_notification_sent_on_failed_state_update(self, mock_delay, mock_post):
+        """Test that notification is queued when run fails."""
         # Create run
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -822,30 +821,28 @@ class DiscordNotificationIntegrationTest(TransactionTestCase):
         # Update state
         self.service.update_run_state(
             run_id=run.id,
-            new_state=IngestionState.FETCHING
+            new_state=IngestionState.FAILED,
+            error_code='TEST_ERROR',
+            error_message='Test error message'
         )
         
         # Verify notification task was queued
         mock_delay.assert_called_once_with(
             run_id=str(run.id),
             ticker='AAPL',
-            state=IngestionState.FETCHING
+            state=IngestionState.FAILED
         )
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
     @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
-    def test_notification_sent_on_queue_for_fetch(self, mock_delay, mock_post):
+    def test_notification_not_sent_on_queue_for_fetch(self, mock_delay, mock_post):
         """Test that notification is queued when run is created."""
         # Queue for fetch
         run, created = self.service.queue_for_fetch(ticker='AAPL')
         
         # Verify notification task was queued
         self.assertTrue(created)
-        mock_delay.assert_called_once_with(
-            run_id=str(run.id),
-            ticker='AAPL',
-            state=IngestionState.QUEUED_FOR_FETCH
-        )
+        mock_delay.assert_not_called()
     
     @override_settings(DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/test')
     @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
