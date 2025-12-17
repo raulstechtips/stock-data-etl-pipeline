@@ -531,8 +531,9 @@ class StockIngestionServiceTransactionTest(TransactionTestCase):
         # Verify no run was created
         self.assertEqual(StockIngestionRun.objects.count(), initial_run_count)
         self.assertFalse(Stock.objects.filter(ticker='NEWSTOCK').exists())
-
-    def test_update_run_state_concurrent_updates(self):
+    
+    @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
+    def test_update_run_state_concurrent_updates(self, mock_discord_delay):
         """Test that concurrent state updates are handled correctly."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,

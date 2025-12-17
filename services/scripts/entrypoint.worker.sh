@@ -27,7 +27,7 @@ else
     # Development configuration
     exec celery -A config worker \
         --loglevel=info \
-        --concurrency=2 \
+        --concurrency=4 \
         --max-tasks-per-child=10 \
         --time-limit=1800 \
         --soft-time-limit=1500 \

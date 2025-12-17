@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass
 from typing import TypedDict, NotRequired
 
 import requests
-from celery import Task, shared_task
+from celery import shared_task
 from django.conf import settings
 from django.db import DatabaseError
 from minio import Minio
@@ -40,12 +40,12 @@ from workers.exceptions import (
     InvalidDataFormatError,
     InvalidStateError,
     NonRetryableError,
-    RetryableError,
     StorageAuthenticationError,
     StorageConnectionError,
     StorageUploadError,
     StorageBucketNotFoundError,
 )
+from workers.tasks.base import BaseTask
 
 
 logger = logging.getLogger(__name__)
@@ -71,23 +71,7 @@ class FetchStockDataResult(TypedDict):
     reason: NotRequired[str]
 
 
-class FetchTask(Task):
-    """
-    Custom Celery task class with retry configuration.
-    
-    This provides a base class for fetch tasks with automatic retry
-    logic and proper error handling.
-    """
-    
-    # Retry configuration
-    autoretry_for = (RetryableError,)
-    retry_kwargs = {'max_retries': 3}
-    retry_backoff = True  # Exponential backoff
-    retry_backoff_max = 600  # Max 10 minutes between retries
-    retry_jitter = True  # Add randomness to prevent thundering herd
-
-
-@shared_task(bind=True, base=FetchTask, name='workers.tasks.fetch_stock_data')
+@shared_task(bind=True, base=BaseTask, name='workers.tasks.fetch_stock_data')
 def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
     """
     Fetch stock data from external API and upload to S3/MinIO.
@@ -100,7 +84,6 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
     5. Transition to FETCHED state with data URI
     
     On failure:
-    - Retryable errors: Automatically retry up to 3 times
     - Non-retryable errors: Immediately transition to FAILED
     - Max retries exceeded: Transition to FAILED
     
@@ -113,11 +96,11 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             data_uri (optional), and reason (optional)
         
     Raises:
-        RetryableError: For transient errors that should be retried
-        NonRetryableError: For permanent errors that should not be retried
+        NonRetryableError: For all errors
     """
     service = StockIngestionService()
     
+    ticker = ticker.strip().upper()
     logger.info("Starting fetch task", extra={"run_id": run_id, "ticker": ticker})
     
     try:
@@ -201,27 +184,19 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                 extra={"ticker": ticker, "bytes": len(file_data)}
             )
         
-        except (APIAuthenticationError, APINotFoundError, APIClientError, InvalidDataFormatError) as e:
+        except (
+            APIAuthenticationError,
+            APINotFoundError,
+            APIClientError,
+            InvalidDataFormatError,
+            APITimeoutError,
+            APIFetchError,
+            APIRateLimitError,
+        ) as e:
             # Non-retryable API errors
-            logger.exception("Non-retryable API error", extra={"ticker": ticker})
+            logger.exception("Non-retryable API error", extra={"ticker": ticker, "run_id": str(run_id)})
             _transition_to_failed(service, run_uuid, "API_ERROR", str(e))
             raise NonRetryableError(str(e)) from e
-        
-        except (APITimeoutError, APIFetchError, APIRateLimitError) as e:
-            # Retryable API errors - will be caught by autoretry_for
-            logger.warning(
-                "Retryable API error",
-                extra={"ticker": ticker, "attempt": self.request.retries + 1, "max_attempts": self.max_retries + 1, "error": str(e)}
-            )
-            # Check if this is the last retry
-            if self.request.retries >= self.max_retries:  # 0-indexed, so 3 = 4th attempt
-                logger.exception("Max retries exceeded, transitioning to FAILED", extra={"run_id": run_id})
-                _transition_to_failed(
-                    service, run_uuid,
-                    "MAX_RETRIES_EXCEEDED",
-                    f"Failed after {self.max_retries + 1} attempts: {str(e)}"
-                )
-            raise  # Re-raise to trigger Celery retry
         
         # Step 3: Upload to S3/MinIO
         try:
@@ -233,29 +208,27 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
         
         except StorageAuthenticationError as e:
             # Non-retryable storage errors
-            logger.exception("Storage authentication error", extra={"ticker": ticker})
+            logger.exception("Storage authentication error", extra={"ticker": ticker, "run_id": str(run_id)})
             _transition_to_failed(service, run_uuid, "STORAGE_AUTH_ERROR", str(e))
             raise NonRetryableError(str(e)) from e
         
         except StorageBucketNotFoundError as e:
             # Non-retryable storage errors
-            logger.exception("Storage bucket not found", extra={"ticker": ticker})
+            logger.exception("Storage bucket not found", extra={"ticker": ticker, "run_id": str(run_id)})
             _transition_to_failed(service, run_uuid, "STORAGE_BUCKET_NOT_FOUND", str(e))
             raise NonRetryableError(str(e)) from e
-        except (StorageConnectionError, StorageUploadError) as e:
-            # Retryable storage errors
-            logger.warning(
-                "Retryable storage error",
-                extra={"ticker": ticker, "attempt": self.request.retries + 1, "max_attempts": self.max_retries + 1,  "error": str(e)}
-            )
-            if self.request.retries >= self.max_retries:
-                logger.exception("Max retries exceeded, transitioning to FAILED", extra={"run_id": run_id})
-                _transition_to_failed(
-                    service, run_uuid,
-                    "MAX_RETRIES_EXCEEDED",
-                    f"Failed after {self.max_retries + 1} attempts: {str(e)}"
-                )
-            raise  # Re-raise to trigger Celery retry
+
+        except StorageConnectionError as e:
+            # Non-retryable storage errors
+            logger.exception("Storage connection error", extra={"ticker": ticker, "run_id": str(run_id)})
+            _transition_to_failed(service, run_uuid, "STORAGE_CONNECTION_ERROR", str(e))
+            raise NonRetryableError(str(e)) from e
+        
+        except StorageUploadError as e:
+            # Non-retryable storage errors
+            logger.exception("Storage upload error", extra={"ticker": ticker, "run_id": str(run_id)})
+            _transition_to_failed(service, run_uuid, "STORAGE_UPLOAD_ERROR", str(e))
+            raise NonRetryableError(str(e)) from e
         
         # Step 4: Transition to FETCHED state
         try:
@@ -280,10 +253,6 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             # This is a critical error but shouldn't retry the entire fetch
             raise NonRetryableError(f"Failed to update run state: {str(e)}") from e
     
-    except RetryableError:
-        # Let retryable errors propagate so Celery can retry
-        raise
-    
     except NonRetryableError:
         # Don't retry non-retryable errors
         raise
@@ -294,15 +263,13 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             "Unexpected error in fetch task",
             extra={"run_id": run_id, "ticker": ticker}
         )
-        # Only attempt to transition to FAILED if we have a valid run_uuid
-        # (if UUID conversion failed, run_uuid won't be defined)
+
         try:
-            if 'run_uuid' in locals():
-                _transition_to_failed(
-                    service, run_uuid,
-                    "UNEXPECTED_ERROR",
-                    f"Unexpected error: {type(e).__name__}: {str(e)}"
-                )
+            _transition_to_failed(
+                service, run_uuid,
+                "UNEXPECTED_ERROR",
+                f"Unexpected error: {type(e).__name__}: {str(e)}"
+            )
         except Exception:
             logger.exception("Failed to transition to FAILED state", extra={"run_id": str(run_id)})
         
@@ -341,9 +308,7 @@ def _fetch_from_api(ticker: str) -> bytes:
         # Make request with timeout
         response = requests.get(
             url,
-            params=params,
-            headers=headers,
-            timeout=settings.STOCK_DATA_API_TIMEOUT,  # 30 second timeout
+            timeout=settings.STOCK_DATA_API_TIMEOUT
         )
         
         # Check for specific error status codes
@@ -395,7 +360,7 @@ def _fetch_from_api(ticker: str) -> bytes:
     
     except HTTPError as e:
         if e.response.status_code >= 500:
-            # Server errors are retryable
+            # Server errors are not retryable
             logger.exception("API server error", extra={"ticker": ticker, "status_code": e.response.status_code})
             raise APIFetchError(f"API server error for {ticker}: {e}") from e
         elif 400 <= e.response.status_code <= 499:
@@ -430,14 +395,14 @@ def _upload_to_storage(ticker: str, run_id: str, file_data: bytes) -> str:
         StorageUploadError: For other upload errors
     """
     try:
-        parsed = urlparse(settings.AWS_S3_ENDPOINT_URL)
+        parsed = urlparse(settings.STOCK_AWS_S3_ENDPOINT_URL)
         endpoint = parsed.netloc or parsed.path
         secure = parsed.scheme == 'https'
         # Initialize MinIO client
         client = Minio(
             endpoint=endpoint,
-            access_key=settings.AWS_ACCESS_KEY_ID,
-            secret_key=settings.AWS_SECRET_ACCESS_KEY,
+            access_key=settings.STOCK_AWS_ACCESS_KEY_ID,
+            secret_key=settings.STOCK_AWS_SECRET_ACCESS_KEY,
             secure=secure
         )
         
@@ -447,7 +412,7 @@ def _upload_to_storage(ticker: str, run_id: str, file_data: bytes) -> str:
             raise StorageBucketNotFoundError(f"Bucket {bucket_name} not found")
         
         # Generate object key for JSON file
-        object_key = f"{ticker}/{run_id}.json"
+        object_key = f"{ticker}.json"
         
         # Upload JSON file
         file_stream = io.BytesIO(file_data)
