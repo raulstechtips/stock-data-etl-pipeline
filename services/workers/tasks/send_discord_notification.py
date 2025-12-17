@@ -428,7 +428,7 @@ def _send_to_discord(webhook_url: str, embed: dict) -> None:
             raise NonRetryableError(f"Discord server error: {e.response.status_code}") from e
         else:
             # Client errors (except specific ones handled above) are not retryable
-            logger.error("Discord client error", extra={"status_code": e.response.status_code})
+            logger.exception("Discord client error", extra={"status_code": e.response.status_code})
             raise NonRetryableError(f"Discord client error: {e.response.status_code}") from e
     
     except RequestException as e:
