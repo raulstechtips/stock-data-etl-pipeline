@@ -423,7 +423,7 @@ def _send_to_discord(webhook_url: str, embed: dict) -> None:
     
     except HTTPError as e:
         if e.response.status_code >= 500:
-            # Server errors are retryable
+            # Server errors are non-retryable
             logger.warning("Discord server error", extra={"status_code": e.response.status_code})
             raise NonRetryableError(f"Discord server error: {e.response.status_code}") from e
         else:
