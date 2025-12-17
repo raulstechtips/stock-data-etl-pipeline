@@ -82,6 +82,7 @@ INSTALLED_APPS = [
 
     # Project apps
     "api",
+    "workers",
 ]
 
 MIDDLEWARE = [
@@ -287,13 +288,22 @@ CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 # Worker-Specific Configuration
 # ============================================
 
+# AWS Keys to access the mock endpoint for fetching stock data - provides realistic data for testing
+MOCK_STOCK_API_AWS_ACCESS_KEY_ID = os.environ.get('MOCK_STOCK_API_AWS_ACCESS_KEY_ID', '')
+MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY = os.environ.get('MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY', '')
+MOCK_STOCK_API_AWS_S3_ENDPOINT_URL = os.environ.get('MOCK_STOCK_API_AWS_S3_ENDPOINT_URL', '')
+
 # External API configuration for fetching stock data
 STOCK_DATA_API_TIMEOUT = int(os.environ.get('STOCK_DATA_API_TIMEOUT', '300')) # 5 minutes
-STOCK_DATA_API_URL = os.environ.get('STOCK_DATA_API_URL', 'https://api.example.com/stock-data')
+STOCK_DATA_API_URL = os.environ.get('STOCK_DATA_API_URL', '')
 STOCK_DATA_API_KEY = os.environ.get('STOCK_DATA_API_KEY', '')
 
 # S3/MinIO configuration for raw data storage (separate from static/media)
 STOCK_RAW_DATA_BUCKET = os.environ.get('STOCK_RAW_DATA_BUCKET', 'stock-raw-data')
+
+# Discord notification configuration
+DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')
+DISCORD_THREAD_ID = os.environ.get('DISCORD_THREAD_ID', '')
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -469,6 +479,7 @@ CSRF_COOKIE_SAMESITE = 'None' if APP_ENV in ["prod", "stage"] else 'Lax'
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
     ),
     'DEFAULT_PARSER_CLASSES': (
         'rest_framework.parsers.JSONParser',
