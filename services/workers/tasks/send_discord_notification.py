@@ -139,9 +139,9 @@ def send_discord_notification(
     
     except NonRetryableError as e:
         # Log non-retryable error but don't fail the task
-        logger.error(
+        logger.exception(
             "Non-retryable error sending Discord notification",
-            extra={"run_id": run_id, "ticker": ticker, "state": state, "error": str(e)}
+            extra={"run_id": str(run_id), "ticker": ticker, "state": state}
         )
         # Return a result indicating failure but don't raise
         return DiscordNotificationResult(
@@ -153,7 +153,7 @@ def send_discord_notification(
             reason='non_retryable_error'
         )
     
-    except Exception as e:
+    except Exception:
         # Catch any unexpected errors
         logger.exception(
             "Unexpected error sending Discord notification",
