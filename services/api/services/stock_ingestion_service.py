@@ -359,12 +359,12 @@ class StockIngestionService:
             )
             
             logger.info(
-                f"Queued Discord notification",
+                "Queued Discord notification",
                 extra={"run_id": str(run_id), "ticker": ticker, "state": state}
             )
         except Exception:
             # Log error but don't fail the transaction
             logger.exception(
-                f"Failed to queue Discord notification",
+                "Failed to queue Discord notification",
                 extra={"run_id": str(run_id), "ticker": ticker, "state": state}
             )
