@@ -328,14 +328,10 @@ def _fetch_from_api(ticker: str) -> bytes:
     """
     try:
         # Build request
-        # url = settings.STOCK_DATA_API_URL
-        url = f"{settings.STOCK_DATA_API_URL}/mock-api/stock-data/{ticker}"
-        # headers = {}
+        url = f"{settings.STOCK_DATA_API_URL}/{ticker}"
         
-        # if settings.STOCK_DATA_API_KEY:
-        #     headers['Authorization'] = f'Bearer {settings.STOCK_DATA_API_KEY}'
-        
-        # params = {'ticker': ticker}
+        if settings.STOCK_DATA_API_KEY:
+            url += f"?apiKey={settings.STOCK_DATA_API_KEY}"
         
         # Make request with timeout
         response = requests.get(
