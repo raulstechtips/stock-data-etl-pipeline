@@ -61,10 +61,10 @@ class StatusResult:
 VALID_TRANSITIONS: dict[str, list[str]] = {
     IngestionState.QUEUED_FOR_FETCH: [IngestionState.FETCHING, IngestionState.FAILED],
     IngestionState.FETCHING: [IngestionState.FETCHED, IngestionState.FAILED],
-    IngestionState.FETCHED: [IngestionState.QUEUED_FOR_SPARK, IngestionState.FAILED],
-    IngestionState.QUEUED_FOR_SPARK: [IngestionState.SPARK_RUNNING, IngestionState.FAILED],
-    IngestionState.SPARK_RUNNING: [IngestionState.SPARK_FINISHED, IngestionState.FAILED],
-    IngestionState.SPARK_FINISHED: [IngestionState.DONE, IngestionState.FAILED],
+    IngestionState.FETCHED: [IngestionState.QUEUED_FOR_DELTA, IngestionState.FAILED],
+    IngestionState.QUEUED_FOR_DELTA: [IngestionState.DELTA_RUNNING, IngestionState.FAILED],
+    IngestionState.DELTA_RUNNING: [IngestionState.DELTA_FINISHED, IngestionState.FAILED],
+    IngestionState.DELTA_FINISHED: [IngestionState.DONE, IngestionState.FAILED],
     IngestionState.DONE: [],  # Terminal state
     IngestionState.FAILED: [],  # Terminal state
 }
@@ -74,9 +74,9 @@ STATE_TIMESTAMP_FIELDS: dict[str, str] = {
     IngestionState.QUEUED_FOR_FETCH: 'queued_for_fetch_at',
     IngestionState.FETCHING: 'fetching_started_at',
     IngestionState.FETCHED: 'fetching_finished_at',
-    IngestionState.QUEUED_FOR_SPARK: 'queued_for_spark_at',
-    IngestionState.SPARK_RUNNING: 'spark_started_at',
-    IngestionState.SPARK_FINISHED: 'spark_finished_at',
+    IngestionState.QUEUED_FOR_DELTA: 'queued_for_delta_at',
+    IngestionState.DELTA_RUNNING: 'delta_started_at',
+    IngestionState.DELTA_FINISHED: 'delta_finished_at',
     IngestionState.DONE: 'done_at',
     IngestionState.FAILED: 'failed_at',
 }
