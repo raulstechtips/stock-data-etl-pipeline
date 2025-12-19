@@ -11,10 +11,12 @@ else
     exit 1
 fi
 
-# Start Celery worker for send_discord_notifications
-echo "Starting Celery worker for send_discord_notifications..."
+# Production setup
+if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ]
+then
+    # Start Celery worker for send_discord_notifications
+    echo "Starting Celery worker for send_discord_notifications... in production mode"
 
-if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ]; then
     # Production configuration - concurrency 2
     exec celery -A config worker \
         --loglevel=info \
@@ -24,4 +26,8 @@ if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ]; then
         --time-limit=1800 \
         --soft-time-limit=1500 \
         --prefetch-multiplier=1
+else
+    # Development mode
+    echo "Running worker_discord in development mode..."
+    exec "$@"
 fi

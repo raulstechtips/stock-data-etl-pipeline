@@ -11,16 +11,24 @@ else
     exit 1
 fi
 
-# This entrypoint is for development only
-# It listens to both queue_for_fetch and send_discord_notifications queues
-echo "Starting Celery worker for development (fetch + discord queues)..."
+# Production setup
+if [ "$APP_ENV" = "dev" ]
+then
+    # This entrypoint is for development only
+    # It listens to both queue_for_fetch and send_discord_notifications queues
+    echo "Starting Celery worker for development (fetch + discord queues)..."
 
-# Development configuration - listens to fetch and discord queues with concurrency 4
-exec celery -A config worker \
-    --loglevel=info \
-    --concurrency=4 \
-    --queues=queue_for_fetch,send_discord_notifications \
-    --max-tasks-per-child=50 \
-    --time-limit=1800 \
-    --soft-time-limit=1500 \
-    --prefetch-multiplier=1
+    # Development configuration - listens to fetch and discord queues with concurrency 4
+    exec celery -A config worker \
+        --loglevel=info \
+        --concurrency=4 \
+        --queues=queue_for_fetch,send_discord_notifications \
+        --max-tasks-per-child=50 \
+        --time-limit=1800 \
+        --soft-time-limit=1500 \
+        --prefetch-multiplier=1
+else
+    # Development mode
+    echo "This should not be used in production"
+    exit 1
+fi
