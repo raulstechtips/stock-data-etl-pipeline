@@ -87,3 +87,29 @@ class InvalidStateError(NonRetryableError):
     """Task cannot proceed due to invalid state (non-retryable)."""
     pass
 
+
+# Delta Lake Processing Errors
+class DeltaLakeError(NonRetryableError):
+    """Base exception for Delta Lake operations (non-retryable)."""
+    pass
+
+
+class DeltaLakeTableNotFoundError(NonRetryableError):
+    """Delta Lake table not found when expected (non-retryable)."""
+    pass
+
+
+class DeltaLakeWriteError(NonRetryableError):
+    """Error writing to Delta Lake table (non-retryable)."""
+    pass
+
+
+class DeltaLakeMergeError(NonRetryableError):
+    """Error merging data into Delta Lake table (non-retryable)."""
+    pass
+
+
+class DeltaLakeReadError(NonRetryableError):
+    """Error reading from Delta Lake table (non-retryable)."""
+    pass
+
