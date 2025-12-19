@@ -47,7 +47,6 @@ from workers.exceptions import (
 )
 from workers.tasks.base import BaseTask
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -120,8 +119,8 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             run = service.get_run_by_id(run_uuid)
             
             # Idempotency check: If already FETCHED or beyond, task is complete
-            if run.state in [IngestionState.FETCHED, IngestionState.QUEUED_FOR_SPARK,
-                            IngestionState.SPARK_RUNNING, IngestionState.SPARK_FINISHED,
+            if run.state in [IngestionState.FETCHED, IngestionState.QUEUED_FOR_DELTA,
+                            IngestionState.DELTA_RUNNING, IngestionState.DELTA_FINISHED,
                             IngestionState.DONE]:
                 logger.info(
                     "Run already past QUEUED_FOR_FETCH, skipping fetch (likely duplicate task execution)",
@@ -239,10 +238,42 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             )
             logger.info("Successfully completed fetch", extra={"run_id": run_id, "ticker": ticker})
             
+            # Step 5: Transition to QUEUED_FOR_DELTA and queue the Delta Lake task
+            try:
+                from workers.tasks.queue_for_delta import process_delta_lake
+                
+                # Update state to QUEUED_FOR_DELTA
+                service.update_run_state(
+                    run_id=run_uuid,
+                    new_state=IngestionState.QUEUED_FOR_DELTA
+                )
+                logger.info(
+                    "Transitioned to QUEUED_FOR_DELTA",
+                    extra={"run_id": run_id, "ticker": ticker}
+                )
+                
+                process_delta_lake.delay(str(run_uuid), ticker)
+                
+                logger.info(
+                    "Queued Delta Lake processing task",
+                    extra={"run_id": run_id, "ticker": ticker}
+                )
+            except Exception as e:
+                logger.exception(
+                    "Failed to queue Delta Lake task",
+                    extra={"run_id": run_id, "ticker": ticker}
+                )
+                _transition_to_failed(
+                    service, run_uuid,
+                    "DELTA_QUEUE_ERROR",
+                    f"Failed to queue Delta Lake task: {type(e).__name__}: {str(e)}"
+                )
+                raise NonRetryableError(f"Failed to queue Delta Lake task: {str(e)}") from e
+            
             return FetchStockDataResult(
                 run_id=str(run_id),
                 ticker=ticker,
-                state=IngestionState.FETCHED,
+                state=IngestionState.QUEUED_FOR_DELTA,
                 skipped=False,
                 data_uri=data_uri
             )
@@ -297,13 +328,10 @@ def _fetch_from_api(ticker: str) -> bytes:
     """
     try:
         # Build request
-        url = settings.STOCK_DATA_API_URL
-        headers = {}
+        url = f"{settings.STOCK_DATA_API_URL}/{ticker}"
         
         if settings.STOCK_DATA_API_KEY:
-            headers['Authorization'] = f'Bearer {settings.STOCK_DATA_API_KEY}'
-        
-        params = {'ticker': ticker}
+            url += f"?apiKey={settings.STOCK_DATA_API_KEY}"
         
         # Make request with timeout
         response = requests.get(
@@ -395,14 +423,14 @@ def _upload_to_storage(ticker: str, run_id: str, file_data: bytes) -> str:
         StorageUploadError: For other upload errors
     """
     try:
-        parsed = urlparse(settings.STOCK_AWS_S3_ENDPOINT_URL)
+        parsed = urlparse(settings.AWS_S3_ENDPOINT_URL)
         endpoint = parsed.netloc or parsed.path
         secure = parsed.scheme == 'https'
         # Initialize MinIO client
         client = Minio(
             endpoint=endpoint,
-            access_key=settings.STOCK_AWS_ACCESS_KEY_ID,
-            secret_key=settings.STOCK_AWS_SECRET_ACCESS_KEY,
+            access_key=settings.AWS_ACCESS_KEY_ID,
+            secret_key=settings.AWS_SECRET_ACCESS_KEY,
             secure=secure
         )
         

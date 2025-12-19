@@ -17,18 +17,18 @@ class IngestionState(models.TextChoices):
     1. QUEUED_FOR_FETCH - Initial state when ingestion is requested
     2. FETCHING - Data is being fetched from source
     3. FETCHED - Data has been successfully fetched
-    4. QUEUED_FOR_SPARK - Ready for Spark processing
-    5. SPARK_RUNNING - Spark job is processing the data
-    6. SPARK_FINISHED - Spark processing completed
+    4. QUEUED_FOR_DELTA - Ready for Delta Lake processing
+    5. DELTA_RUNNING - Delta Lake job is processing the data
+    6. DELTA_FINISHED - Delta Lake processing completed
     7. DONE - Pipeline completed successfully
     8. FAILED - Pipeline encountered an error
     """
     QUEUED_FOR_FETCH = 'QUEUED_FOR_FETCH', 'Queued for Fetch'
     FETCHING = 'FETCHING', 'Fetching'
     FETCHED = 'FETCHED', 'Fetched'
-    QUEUED_FOR_SPARK = 'QUEUED_FOR_SPARK', 'Queued for Spark'
-    SPARK_RUNNING = 'SPARK_RUNNING', 'Spark Running'
-    SPARK_FINISHED = 'SPARK_FINISHED', 'Spark Finished'
+    QUEUED_FOR_DELTA = 'QUEUED_FOR_DELTA', 'Queued for Delta Lake'
+    DELTA_RUNNING = 'DELTA_RUNNING', 'Delta Lake Running'
+    DELTA_FINISHED = 'DELTA_FINISHED', 'Delta Lake Finished'
     DONE = 'DONE', 'Done'
     FAILED = 'FAILED', 'Failed'
 
@@ -175,9 +175,9 @@ class StockIngestionRun(models.Model):
     queued_for_fetch_at = models.DateTimeField(null=True, blank=True)
     fetching_started_at = models.DateTimeField(null=True, blank=True)
     fetching_finished_at = models.DateTimeField(null=True, blank=True)
-    queued_for_spark_at = models.DateTimeField(null=True, blank=True)
-    spark_started_at = models.DateTimeField(null=True, blank=True)
-    spark_finished_at = models.DateTimeField(null=True, blank=True)
+    queued_for_delta_at = models.DateTimeField(null=True, blank=True)
+    delta_started_at = models.DateTimeField(null=True, blank=True)
+    delta_finished_at = models.DateTimeField(null=True, blank=True)
     done_at = models.DateTimeField(null=True, blank=True)
     failed_at = models.DateTimeField(null=True, blank=True)
     
@@ -204,9 +204,9 @@ class StockIngestionRun(models.Model):
                     IngestionState.QUEUED_FOR_FETCH,
                     IngestionState.FETCHING,
                     IngestionState.FETCHED,
-                    IngestionState.QUEUED_FOR_SPARK,
-                    IngestionState.SPARK_RUNNING,
-                    IngestionState.SPARK_FINISHED,
+                    IngestionState.QUEUED_FOR_DELTA,
+                    IngestionState.DELTA_RUNNING,
+                    IngestionState.DELTA_FINISHED,
                 ]),
                 name='unique_active_run_per_stock'
             )

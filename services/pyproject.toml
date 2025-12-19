@@ -17,5 +17,8 @@ dependencies = [
     "redis>=5.0.0,<6.0.0",
     "psycopg2-binary==2.9.10",
     "django-storages[s3]==1.14.2",
-    "minio==7.2.20"
+    "minio==7.2.20",
+    "deltalake==1.2.1",
+    "polars==1.36.1",
+    "pyarrow==22.0.0"
 ]

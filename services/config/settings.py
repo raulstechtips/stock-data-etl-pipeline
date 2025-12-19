@@ -292,14 +292,18 @@ CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 MOCK_STOCK_API_AWS_ACCESS_KEY_ID = os.environ.get('MOCK_STOCK_API_AWS_ACCESS_KEY_ID', '')
 MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY = os.environ.get('MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY', '')
 MOCK_STOCK_API_AWS_S3_ENDPOINT_URL = os.environ.get('MOCK_STOCK_API_AWS_S3_ENDPOINT_URL', '')
+MOCK_STOCK_DATA_BUCKET = os.environ.get('MOCK_STOCK_DATA_BUCKET', 'stock-api')
 
 # External API configuration for fetching stock data
 STOCK_DATA_API_TIMEOUT = int(os.environ.get('STOCK_DATA_API_TIMEOUT', '300')) # 5 minutes
 STOCK_DATA_API_URL = os.environ.get('STOCK_DATA_API_URL', '')
 STOCK_DATA_API_KEY = os.environ.get('STOCK_DATA_API_KEY', '')
 
-# S3/MinIO configuration for raw data storage (separate from static/media)
+# S3/MinIO configuration for raw data storage (fetched JSON files)
 STOCK_RAW_DATA_BUCKET = os.environ.get('STOCK_RAW_DATA_BUCKET', 'stock-raw-data')
+
+# S3/MinIO configuration for Delta Lake processed data storage
+STOCK_DELTA_LAKE_BUCKET = os.environ.get('STOCK_DELTA_LAKE_BUCKET', 'stock-delta-lake')
 
 # Discord notification configuration
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')

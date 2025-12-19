@@ -325,12 +325,12 @@ def _create_failed_embed(run: StockIngestionRun) -> dict:
         phase_timestamps.append(f"**Fetching Started:** {run.fetching_started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     if run.fetching_finished_at:
         phase_timestamps.append(f"**Fetching Finished:** {run.fetching_finished_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    if run.queued_for_spark_at:
-        phase_timestamps.append(f"**Queued for Spark:** {run.queued_for_spark_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    if run.spark_started_at:
-        phase_timestamps.append(f"**Spark Started:** {run.spark_started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    if run.spark_finished_at:
-        phase_timestamps.append(f"**Spark Finished:** {run.spark_finished_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    if run.queued_for_delta_at:
+        phase_timestamps.append(f"**Queued for Delta:** {run.queued_for_delta_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    if run.delta_started_at:
+        phase_timestamps.append(f"**Delta Started:** {run.delta_started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    if run.delta_finished_at:
+        phase_timestamps.append(f"**Delta Finished:** {run.delta_finished_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     
     if phase_timestamps:
         fields.append({
