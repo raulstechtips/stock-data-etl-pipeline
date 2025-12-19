@@ -263,6 +263,12 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     "Failed to queue Delta Lake task",
                     extra={"run_id": run_id, "ticker": ticker}
                 )
+                _transition_to_failed(
+                    service, run_uuid,
+                    "DELTA_QUEUE_ERROR",
+                    f"Failed to queue Delta Lake task: {type(e).__name__}: {str(e)}"
+                )
+                raise NonRetryableError(f"Failed to queue Delta Lake task: {str(e)}") from e
             
             return FetchStockDataResult(
                 run_id=str(run_id),
