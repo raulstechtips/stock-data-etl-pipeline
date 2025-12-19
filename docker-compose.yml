@@ -98,8 +98,9 @@ services:
             mc ls myminio/static >/dev/null 2>&1 || mc mb myminio/static &&
             mc ls myminio/media >/dev/null 2>&1 || mc mb myminio/media &&
             mc ls myminio/stock-raw-data >/dev/null 2>&1 || mc mb myminio/stock-raw-data &&
+            mc ls myminio/stock-delta-lake >/dev/null 2>&1 || mc mb myminio/stock-delta-lake &&
             mc anonymous set download myminio/static &&
-            echo 'Buckets created successfully - static is public, media and stock-raw-data are private'
+            echo 'Buckets created successfully - static is public, media, stock-raw-data, and stock-delta-lake are private'
             "
         depends_on:
             - minio
