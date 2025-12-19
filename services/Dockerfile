@@ -58,9 +58,12 @@ RUN git config --global --add safe.directory /workspace
 
 EXPOSE 8000
 
-RUN chmod +x /usr/src/app/scripts/wait_for_dependencies.sh
-RUN chmod +x /usr/src/app/scripts/entrypoint.sh
-RUN chmod +x /usr/src/app/scripts/entrypoint.api.sh
-RUN chmod +x /usr/src/app/scripts/entrypoint.worker.sh
+RUN chmod +x /usr/src/app/scripts/wait_for_dependencies.sh \
+    /usr/src/app/scripts/entrypoint.sh \
+    /usr/src/app/scripts/entrypoint.api.sh \
+    /usr/src/app/scripts/entrypoint.worker.dev.sh \
+    /usr/src/app/scripts/entrypoint.worker.fetch.sh \
+    /usr/src/app/scripts/entrypoint.worker.delta.sh \
+    /usr/src/app/scripts/entrypoint.worker.discord.sh
 
 ENTRYPOINT ["/usr/src/app/scripts/entrypoint.sh"]
