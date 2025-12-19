@@ -11,24 +11,16 @@ else
     exit 1
 fi
 
-# Start Celery worker
-echo "Starting Celery worker..."
+# Start Celery worker for queue_for_fetch
+echo "Starting Celery worker for queue_for_fetch..."
 
 if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ]; then
-    # Production configuration
+    # Production configuration - concurrency 2
     exec celery -A config worker \
         --loglevel=info \
-        --concurrency=4 \
+        --concurrency=2 \
+        --queues=queue_for_fetch \
         --max-tasks-per-child=50 \
-        --time-limit=1800 \
-        --soft-time-limit=1500 \
-        --prefetch-multiplier=1
-else
-    # Development configuration
-    exec celery -A config worker \
-        --loglevel=info \
-        --concurrency=4 \
-        --max-tasks-per-child=10 \
         --time-limit=1800 \
         --soft-time-limit=1500 \
         --prefetch-multiplier=1
