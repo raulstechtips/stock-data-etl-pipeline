@@ -210,9 +210,9 @@ class UpdateStockMetadataTaskTests(TransactionTestCase):
 class ReadMetadataFromDeltaLakeTests(TransactionTestCase):
     """Tests for reading metadata from Delta Lake."""
 
-    @patch('workers.tasks.update_stock_metadata.pl.read_delta')
+    @patch('workers.tasks.update_stock_metadata.pl.scan_delta')
     @patch('workers.tasks.update_stock_metadata.DeltaTable')
-    def test_read_metadata_success_returns_clean_dict(self, mock_delta_table, mock_read_delta):
+    def test_read_metadata_success_returns_clean_dict(self, mock_delta_table, mock_scan_delta):
         """Test successful metadata read from Delta Lake returns cleaned dictionary."""
         # Arrange
         ticker = 'AAPL'
@@ -233,7 +233,11 @@ class ReadMetadataFromDeltaLakeTests(TransactionTestCase):
             'description': ['Apple Inc. designs...'],
         }
         mock_df = pl.DataFrame(metadata_data)
-        mock_read_delta.return_value = mock_df
+        
+        # Mock the lazy evaluation chain: scan_delta().filter().collect()
+        mock_lazy_frame = MagicMock()
+        mock_lazy_frame.filter.return_value.collect.return_value = mock_df
+        mock_scan_delta.return_value = mock_lazy_frame
 
         # Act
         result = _read_metadata_from_delta_lake(ticker)
@@ -250,9 +254,9 @@ class ReadMetadataFromDeltaLakeTests(TransactionTestCase):
         self.assertNotIn('record_type', result)
         self.assertNotIn('period_end_date', result)
 
-    @patch('workers.tasks.update_stock_metadata.pl.read_delta')
+    @patch('workers.tasks.update_stock_metadata.pl.scan_delta')
     @patch('workers.tasks.update_stock_metadata.DeltaTable')
-    def test_no_metadata_record_found_returns_none(self, mock_delta_table, mock_read_delta):
+    def test_no_metadata_record_found_returns_none(self, mock_delta_table, mock_scan_delta):
         """Test that None is returned when no metadata record exists for ticker."""
         # Arrange
         ticker = 'AAPL'
@@ -263,7 +267,11 @@ class ReadMetadataFromDeltaLakeTests(TransactionTestCase):
             'record_type': [],
             'sector': [],
         })
-        mock_read_delta.return_value = mock_df
+        
+        # Mock the lazy evaluation chain: scan_delta().filter().collect()
+        mock_lazy_frame = MagicMock()
+        mock_lazy_frame.filter.return_value.collect.return_value = mock_df
+        mock_scan_delta.return_value = mock_lazy_frame
 
         # Act
         result = _read_metadata_from_delta_lake(ticker)
@@ -271,9 +279,9 @@ class ReadMetadataFromDeltaLakeTests(TransactionTestCase):
         # Assert - Test behavior: should return None, not raise exception
         self.assertIsNone(result)
 
-    @patch('workers.tasks.update_stock_metadata.pl.read_delta')
+    @patch('workers.tasks.update_stock_metadata.pl.scan_delta')
     @patch('workers.tasks.update_stock_metadata.DeltaTable')
-    def test_multiple_metadata_records_uses_first(self, mock_delta_table, mock_read_delta):
+    def test_multiple_metadata_records_uses_first(self, mock_delta_table, mock_scan_delta):
         """Test that first record is used when multiple metadata records exist (deduplication)."""
         # Arrange
         ticker = 'AAPL'
@@ -287,7 +295,11 @@ class ReadMetadataFromDeltaLakeTests(TransactionTestCase):
             'name': ['Apple Inc.', 'Apple Corp.'],
         }
         mock_df = pl.DataFrame(metadata_data)
-        mock_read_delta.return_value = mock_df
+        
+        # Mock the lazy evaluation chain: scan_delta().filter().collect()
+        mock_lazy_frame = MagicMock()
+        mock_lazy_frame.filter.return_value.collect.return_value = mock_df
+        mock_scan_delta.return_value = mock_lazy_frame
 
         # Act
         result = _read_metadata_from_delta_lake(ticker)
