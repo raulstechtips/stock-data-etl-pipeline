@@ -236,12 +236,15 @@ def _read_metadata_from_delta_lake(ticker: str) -> Dict[str, Any] | None:
             )
             raise DeltaLakeReadError(f"Delta Lake table not found: {table_path}") from e
         
-        # Read table into Polars DataFrame
-        df = pl.read_delta(table_path, storage_options=storage_options)
-        
-        # Filter for metadata record for this ticker
-        metadata_df = df.filter(
-            (pl.col("ticker") == ticker) & (pl.col("record_type") == "metadata")
+        # Read table into Polars DataFrame with predicate pushdown
+        # Using scan_delta (lazy) + filter + collect enables predicate pushdown
+        # to Delta Lake, avoiding loading the entire table into memory
+        metadata_df = (
+            pl.scan_delta(table_path, storage_options=storage_options)
+            .filter(
+                (pl.col("ticker") == ticker) & (pl.col("record_type") == "metadata")
+            )
+            .collect()
         )
         
         if len(metadata_df) == 0:
