@@ -27,6 +27,7 @@
 				"ms-python.python",
 				"ms-vsliveshare.vsliveshare-pack",
 				"eamodio.gitlens",
+				"zainchen.json",
 				"meezilla.json"
 			]
 		}
@@ -44,7 +45,8 @@
 		"redis",
 		"minio",
 		"rabbitmq",
-		"worker"
+		"worker",
+		"worker_delta"
 	],
 
 	// Uncomment the next line if you want to keep your containers running after VS Code shuts down.

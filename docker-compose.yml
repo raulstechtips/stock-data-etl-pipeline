@@ -16,12 +16,6 @@ services:
             - rabbitmq
             - createbuckets
         network_mode: "host"
-        extra_hosts:
-            - "worker:127.0.0.1"
-            - "db:127.0.0.1"
-            - "redis:127.0.0.1"
-            - "rabbitmq:127.0.0.1"
-            - "minio:127.0.0.1"
 
     worker:
         build: ./services
@@ -36,13 +30,22 @@ services:
             - minio
             - createbuckets
         network_mode: "host"
-        extra_hosts:
-            - "web:127.0.0.1"
-            - "db:127.0.0.1"
-            - "redis:127.0.0.1"
-            - "rabbitmq:127.0.0.1"
-            - "minio:127.0.0.1"
-        command: ["/usr/src/app/scripts/entrypoint.worker.sh"]
+        command: ["/usr/src/app/scripts/entrypoint.worker.dev.sh"]
+
+    worker_delta:
+        build: ./services
+        volumes:
+            - ./services:/usr/src/app/
+        env_file:
+            - ./.env
+        depends_on:
+            - db
+            - redis
+            - rabbitmq
+            - minio
+            - createbuckets
+        network_mode: "host"
+        command: ["/usr/src/app/scripts/entrypoint.worker.delta.sh"]
 
     db:
         image: postgres:17.5

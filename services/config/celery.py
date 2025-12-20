@@ -5,6 +5,7 @@ This module configures Celery with:
 - RabbitMQ as the message broker
 - Redis as the results backend
 - Auto-discovery of tasks from installed apps
+- Separate queues for different task types
 """
 
 import os
@@ -21,6 +22,14 @@ app = Celery('stock_etl_pipeline')
 
 # Load configuration from Django settings with CELERY_ prefix
 app.config_from_object('django.conf:settings', namespace='CELERY')
+
+# Configure task routing to separate queues
+# Each task type will be routed to its own dedicated queue
+app.conf.task_routes = {
+    'workers.tasks.fetch_stock_data': {'queue': 'queue_for_fetch'},
+    'workers.tasks.process_delta_lake': {'queue': 'queue_for_delta'},
+    'workers.tasks.send_discord_notification': {'queue': 'send_discord_notifications'},
+}
 
 # Auto-discover tasks from all registered Django apps
 # This will look for tasks.py in each app
