@@ -278,6 +278,48 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
             )
             logger.info("Successfully completed Delta Lake processing", extra={"run_id": run_id, "ticker": ticker})
             
+        except (InvalidStateTransitionError, IngestionRunNotFoundError, DatabaseError) as e:
+            logger.exception("Failed to update run state", extra={"run_id": str(run_id)})
+            raise NonRetryableError(f"Failed to update run state: {str(e)}") from e
+    
+        # Step 6: Transition to DONE and trigger metadata update task
+        try:
+            # Update state to DONE
+            service.update_run_state(
+                run_id=run_uuid,
+                new_state=IngestionState.DONE
+            )
+            logger.info(
+                "Transitioned to DONE state",
+                extra={"run_id": run_id, "ticker": ticker}
+            )
+            
+            # Queue metadata update task on queue_for_fetch (low priority)
+            from workers.tasks.update_stock_metadata import update_stock_metadata
+            
+            update_stock_metadata.delay(ticker)
+            
+            logger.info(
+                "Queued metadata update task",
+                extra={"run_id": run_id, "ticker": ticker}
+            )
+
+            # Task already succeeded at DELTA_FINISHED, so return success
+            return ProcessDeltaLakeResult(
+                run_id=str(run_id),
+                ticker=ticker,
+                state=IngestionState.DONE,
+                skipped=False,
+                processed_uri=processed_uri,
+                records_processed=total_records
+            )
+        except Exception as e:
+            # Log error but don't fail the task - metadata update is not critical
+            logger.exception(
+                "Failed to transition to DONE or queue metadata task",
+                extra={"run_id": run_id, "ticker": ticker}
+            )
+            # Return success with DELTA_FINISHED state since Delta processing succeeded
             return ProcessDeltaLakeResult(
                 run_id=str(run_id),
                 ticker=ticker,
@@ -286,11 +328,7 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
                 processed_uri=processed_uri,
                 records_processed=total_records
             )
-        
-        except (InvalidStateTransitionError, IngestionRunNotFoundError, DatabaseError) as e:
-            logger.exception("Failed to update run state", extra={"run_id": str(run_id)})
-            raise NonRetryableError(f"Failed to update run state: {str(e)}") from e
-    
+            
     except NonRetryableError:
         raise
     

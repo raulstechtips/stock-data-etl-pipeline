@@ -50,11 +50,31 @@ class Stock(models.Model):
             Automatically normalized to uppercase on save.
         created_at: Timestamp when the stock was first added
         updated_at: Timestamp when the stock was last modified
+        sector: Industry sector classification (e.g., 'Information Technology')
+        name: Company name
+        exchange: Stock exchange where traded (e.g., 'NASDAQ')
+        country: Country code where company is based (e.g., 'US')
+        subindustry: Sub-industry classification
+        morningstar_sector: Morningstar sector classification
+        morningstar_industry: Morningstar industry classification
+        industry: Industry classification
+        description: Company description
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ticker = models.CharField(max_length=20, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # Metadata fields from Delta Lake
+    sector = models.CharField(max_length=255, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    exchange = models.CharField(max_length=50, null=True, blank=True)
+    country = models.CharField(max_length=10, null=True, blank=True)
+    subindustry = models.CharField(max_length=255, null=True, blank=True)
+    morningstar_sector = models.CharField(max_length=255, null=True, blank=True)
+    morningstar_industry = models.CharField(max_length=255, null=True, blank=True)
+    industry = models.CharField(max_length=255, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'stocks'

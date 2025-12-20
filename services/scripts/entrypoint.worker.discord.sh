@@ -19,6 +19,7 @@ then
 
     # Production configuration - concurrency 2
     exec celery -A config worker \
+        --hostname=discord-worker@%h \
         --loglevel=info \
         --concurrency=2 \
         --queues=send_discord_notifications \

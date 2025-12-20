@@ -12,6 +12,7 @@ This module contains comprehensive tests for:
 from .queue_for_fetch import FetchStockDataTaskTest, FetchStockDataInvalidInputTest
 from .send_discord_notification import SendDiscordNotificationTaskTest, DiscordNotificationIntegrationTest
 from .queue_for_delta import ProcessDeltaLakeTaskTest, ProcessDeltaLakeInvalidInputTest, TTMDataProcessingTest
+from .update_stock_metadata import UpdateStockMetadataTaskTests, ReadMetadataFromDeltaLakeTests, UpdateStockWithMetadataTests, MetadataWorkerIntegrationTests
 
 __all__ = [
     'FetchStockDataTaskTest',
@@ -20,5 +21,9 @@ __all__ = [
     'DiscordNotificationIntegrationTest',
     'ProcessDeltaLakeTaskTest',
     'ProcessDeltaLakeInvalidInputTest',
-    'TTMDataProcessingTest'
+    'TTMDataProcessingTest',
+    'UpdateStockMetadataTaskTests',
+    'ReadMetadataFromDeltaLakeTests',
+    'UpdateStockWithMetadataTests',
+    'MetadataWorkerIntegrationTests'
 ]

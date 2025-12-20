@@ -20,6 +20,7 @@ then
 
     # Development configuration - listens to fetch and discord queues with concurrency 4
     exec celery -A config worker \
+        --hostname=dev-worker@%h \
         --loglevel=info \
         --concurrency=4 \
         --queues=queue_for_fetch,send_discord_notifications \
@@ -29,6 +30,6 @@ then
         --prefetch-multiplier=1
 else
     # Development mode
-    echo "This should not be used in production"
+    echo "Error: Invalid APP_ENV='$APP_ENV'. Expected: dev"
     exit 1
 fi

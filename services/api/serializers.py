@@ -14,12 +14,27 @@ class StockSerializer(serializers.ModelSerializer):
     """
     Serializer for the Stock model.
     
-    Used for listing and retrieving stock information.
+    Used for listing and retrieving stock information including metadata
+    fields populated from Delta Lake.
     """
 
     class Meta:
         model = Stock
-        fields = ['id', 'ticker', 'created_at', 'updated_at']
+        fields = [
+            'id',
+            'ticker',
+            'created_at',
+            'updated_at',
+            'sector',
+            'name',
+            'exchange',
+            'country',
+            'subindustry',
+            'morningstar_sector',
+            'morningstar_industry',
+            'industry',
+            'description',
+        ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
