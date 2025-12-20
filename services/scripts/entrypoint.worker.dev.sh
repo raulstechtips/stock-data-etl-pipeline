@@ -20,6 +20,7 @@ then
 
     # Development configuration - listens to fetch and discord queues with concurrency 4
     exec celery -A config worker \
+        --hostname=dev-worker@%h \
         --loglevel=info \
         --concurrency=4 \
         --queues=queue_for_fetch,send_discord_notifications \

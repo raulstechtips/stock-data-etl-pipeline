@@ -12,13 +12,14 @@ else
 fi
 
 # Production setup
-if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ]
+if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ] || [ "$APP_ENV" = "dev" ]
 then
     # Start Celery worker for queue_for_delta
-    echo "Starting Celery worker for queue_for_delta (concurrency=1)... in production mode"
+    echo "Starting Celery worker for queue_for_delta (concurrency=1)... in $APP_ENV mode"
 
     # Celery configuration - concurrency 1 (strict requirement)
     exec celery -A config worker \
+        --hostname=delta-worker@%h \
         --loglevel=info \
         --concurrency=1 \
         --queues=queue_for_delta \
@@ -26,8 +27,4 @@ then
         --time-limit=1800 \
         --soft-time-limit=1500 \
         --prefetch-multiplier=1
-else
-    # Development mode
-    echo "Running worker_delta in development mode..."
-    exec "$@"
 fi

@@ -19,6 +19,7 @@ if [ "$APP_ENV" = "prod" ] || [ "$APP_ENV" = "stage" ]; then
 
     # Production configuration - concurrency 2
     exec celery -A config worker \
+        --hostname=fetch-worker@%h \
         --loglevel=info \
         --concurrency=2 \
         --queues=queue_for_fetch \
