@@ -211,31 +211,21 @@ def _read_metadata_from_delta_lake(ticker: str) -> Dict[str, Any] | None:
         StorageAuthenticationError: If authentication fails
         InvalidDataFormatError: If data format is invalid
     """
+    # Build storage options
+    storage_options = {
+        'AWS_ACCESS_KEY_ID': settings.AWS_ACCESS_KEY_ID,
+        'AWS_SECRET_ACCESS_KEY': settings.AWS_SECRET_ACCESS_KEY,
+        'AWS_ENDPOINT_URL': settings.AWS_S3_ENDPOINT_URL,
+        'AWS_REGION': settings.AWS_S3_REGION_NAME or 'us-east-1',
+        'AWS_ALLOW_HTTP': 'true',
+        'AWS_S3_ALLOW_UNSAFE_RENAME': 'true',
+        "conditional_put": "etag",
+    }
+    
+    # Path to unified stocks table
+    table_path = f"s3://{settings.STOCK_DELTA_LAKE_BUCKET}/stocks"
+    
     try:
-        # Build storage options
-        storage_options = {
-            'AWS_ACCESS_KEY_ID': settings.AWS_ACCESS_KEY_ID,
-            'AWS_SECRET_ACCESS_KEY': settings.AWS_SECRET_ACCESS_KEY,
-            'AWS_ENDPOINT_URL': settings.AWS_S3_ENDPOINT_URL,
-            'AWS_REGION': settings.AWS_S3_REGION_NAME or 'us-east-1',
-            'AWS_ALLOW_HTTP': 'true',
-            'AWS_S3_ALLOW_UNSAFE_RENAME': 'true',
-            "conditional_put": "etag",
-        }
-        
-        # Path to unified stocks table
-        table_path = f"s3://{settings.STOCK_DELTA_LAKE_BUCKET}/stocks"
-        
-        # Check if table exists
-        try:
-            dt = DeltaTable(table_path, storage_options=storage_options)
-        except TableNotFoundError as e:
-            logger.warning(
-                "Delta Lake stocks table not found",
-                extra={"ticker": ticker, "table_path": table_path}
-            )
-            raise DeltaLakeReadError(f"Delta Lake table not found: {table_path}") from e
-        
         # Read table into Polars DataFrame with predicate pushdown
         # Using scan_delta (lazy) + filter + collect enables predicate pushdown
         # to Delta Lake, avoiding loading the entire table into memory
@@ -287,9 +277,12 @@ def _read_metadata_from_delta_lake(ticker: str) -> Dict[str, Any] | None:
         
         return metadata_fields
     
-    except TableNotFoundError:
-        # Already handled above
-        raise
+    except TableNotFoundError as e:
+        logger.warning(
+            "Delta Lake stocks table not found",
+            extra={"ticker": ticker, "table_path": table_path}
+        )
+        raise DeltaLakeReadError(f"Delta Lake table not found: {table_path}") from e
     
     except Exception as e:
         logger.exception("Error reading from Delta Lake", extra={"ticker": ticker})

@@ -309,13 +309,18 @@ class ReadMetadataFromDeltaLakeTests(TransactionTestCase):
         self.assertEqual(result['sector'], 'Technology')  # First record
         self.assertEqual(result['name'], 'Apple Inc.')  # First record
 
-    @patch('workers.tasks.update_stock_metadata.DeltaTable')
-    def test_delta_table_not_found_raises_read_error(self, mock_delta_table):
+    @patch('workers.tasks.update_stock_metadata.pl.scan_delta')
+    def test_delta_table_not_found_raises_read_error(self, mock_scan_delta):
         """Test that missing Delta Lake table raises DeltaLakeReadError."""
         # Arrange
         from deltalake.exceptions import TableNotFoundError
         ticker = 'AAPL'
-        mock_delta_table.side_effect = TableNotFoundError('Table not found')
+        
+        # Mock scan_delta to raise TableNotFoundError during collect()
+        # This simulates what happens when the table doesn't exist
+        mock_lazy_frame = MagicMock()
+        mock_lazy_frame.filter.return_value.collect.side_effect = TableNotFoundError('Table not found')
+        mock_scan_delta.return_value = mock_lazy_frame
 
         # Act & Assert - Test exception type (message is implementation detail)
         with self.assertRaises(DeltaLakeReadError):
