@@ -30,6 +30,6 @@ then
         --prefetch-multiplier=1
 else
     # Development mode
-    echo "This should not be used in production"
+    echo "Error: Invalid APP_ENV='$APP_ENV'. Expected: dev"
     exit 1
 fi

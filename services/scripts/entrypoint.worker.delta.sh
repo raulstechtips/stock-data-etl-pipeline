@@ -27,4 +27,7 @@ then
         --time-limit=1800 \
         --soft-time-limit=1500 \
         --prefetch-multiplier=1
+else
+    echo "Error: Invalid APP_ENV='$APP_ENV'. Expected: prod, stage, or dev"
+    exit 1
 fi
