@@ -55,6 +55,7 @@ SAMPLE_STOCK_DATA = {
 }
 
 
+@patch('workers.tasks.update_stock_metadata.update_stock_metadata.delay')
 @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
 class ProcessDeltaLakeTaskTest(TransactionTestCase):
     """Tests for the process_delta_lake Celery task."""
@@ -68,7 +69,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_successful_task_execution(
-        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay
+        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay, mock_metadata_delay
     ):
         """Test successful task execution from QUEUED_FOR_DELTA to DELTA_FINISHED."""
         # Create run in QUEUED_FOR_DELTA state
@@ -101,14 +102,14 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
         # Verify result
         self.assertEqual(result['run_id'], str(run.id))
         self.assertEqual(result['ticker'], 'AAPL')
-        self.assertEqual(result['state'], IngestionState.DELTA_FINISHED)
+        self.assertEqual(result['state'], IngestionState.DONE)
         self.assertFalse(result['skipped'])
         self.assertEqual(result['processed_uri'], 's3://stock-delta-lake/stocks')
         self.assertEqual(result['records_processed'], 4)  # 3 financials + 1 metadata
         
         # Verify run state
         run.refresh_from_db()
-        self.assertEqual(run.state, IngestionState.DELTA_FINISHED)
+        self.assertEqual(run.state, IngestionState.DONE)
         self.assertIsNotNone(run.processed_data_uri)
         self.assertIsNotNone(run.delta_started_at)
         self.assertIsNotNone(run.delta_finished_at)
@@ -117,7 +118,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_delta_running_state_retry_proceeds(
-        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay
+        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay, mock_metadata_delay
     ):
         """Test that a run in DELTA_RUNNING state (from a previous retry) can proceed."""
         # Create run already in DELTA_RUNNING state
@@ -145,20 +146,20 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
         result = process_delta_lake(str(run.id), 'AAPL')
         
         # Verify result
-        self.assertEqual(result['state'], IngestionState.DELTA_FINISHED)
+        self.assertEqual(result['state'], IngestionState.DONE)
         self.assertFalse(result['skipped'])
         
         # Verify run state transitioned to DELTA_FINISHED
         run.refresh_from_db()
-        self.assertEqual(run.state, IngestionState.DELTA_FINISHED)
+        self.assertEqual(run.state, IngestionState.DONE)
     
     @patch('workers.tasks.queue_for_delta._download_from_storage')
-    def test_idempotency_already_delta_finished(self, mock_download, mock_discord_delay):
+    def test_idempotency_already_delta_finished(self, mock_download, mock_discord_delay, mock_metadata_delay):
         """Test that task is idempotent when run is already DELTA_FINISHED."""
         # Create run that's already DELTA_FINISHED
         run = StockIngestionRun.objects.create(
             stock=self.stock,
-            state=IngestionState.DELTA_FINISHED,
+            state=IngestionState.DONE,
             raw_data_uri='s3://stock-raw-data/AAPL.json',
             processed_data_uri='s3://stock-delta-lake/AAPL/financials'
         )
@@ -169,13 +170,13 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
         # Verify task was skipped
         self.assertTrue(result['skipped'])
         self.assertEqual(result['reason'], 'already_processed')
-        self.assertEqual(result['state'], IngestionState.DELTA_FINISHED)
+        self.assertEqual(result['state'], IngestionState.DONE)
         
         # Verify download was not called
         mock_download.assert_not_called()
     
     @patch('workers.tasks.queue_for_delta._download_from_storage')
-    def test_idempotency_already_done(self, mock_download, mock_discord_delay):
+    def test_idempotency_already_done(self, mock_download, mock_discord_delay, mock_metadata_delay):
         """Test that task is idempotent when run is already DONE."""
         # Create run that's already DONE
         run = StockIngestionRun.objects.create(
@@ -195,7 +196,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
         # Verify download was not called
         mock_download.assert_not_called()
     
-    def test_failed_state_raises_non_retryable_error(self, mock_discord_delay):
+    def test_failed_state_raises_non_retryable_error(self, mock_discord_delay, mock_metadata_delay):
         """Test that attempting to process a run in FAILED state raises NonRetryableError."""
         # Create run that's already FAILED
         run = StockIngestionRun.objects.create(
@@ -214,7 +215,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
         run.refresh_from_db()
         self.assertEqual(run.state, IngestionState.FAILED)
     
-    def test_run_not_found(self, mock_discord_delay):
+    def test_run_not_found(self, mock_discord_delay, mock_metadata_delay):
         """Test that task fails if run doesn't exist."""
         fake_id = str(uuid.uuid4())
         
@@ -222,7 +223,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
         with self.assertRaises(NonRetryableError):
             process_delta_lake(fake_id, 'AAPL')
     
-    def test_missing_raw_data_uri_transitions_to_failed(self, mock_discord_delay):
+    def test_missing_raw_data_uri_transitions_to_failed(self, mock_discord_delay, mock_metadata_delay):
         """Test that missing raw_data_uri transitions run to FAILED."""
         # Create run without raw_data_uri
         run = StockIngestionRun.objects.create(
@@ -242,7 +243,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_storage_authentication_error_transitions_to_failed(
-        self, mock_download, mock_discord_delay
+        self, mock_download, mock_discord_delay, mock_metadata_delay
     ):
         """Test that storage authentication errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
@@ -265,7 +266,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_storage_bucket_not_found_transitions_to_failed(
-        self, mock_download, mock_discord_delay
+        self, mock_download, mock_discord_delay, mock_metadata_delay
     ):
         """Test that StorageBucketNotFoundError transitions run to FAILED."""
         run = StockIngestionRun.objects.create(
@@ -289,7 +290,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_invalid_data_format_transitions_to_failed(
-        self, mock_download, mock_transform, mock_discord_delay
+        self, mock_download, mock_transform, mock_discord_delay, mock_metadata_delay
     ):
         """Test that invalid data format errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
@@ -315,7 +316,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_delta_lake_write_error_transitions_to_failed(
-        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay
+        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay, mock_metadata_delay
     ):
         """Test that Delta Lake write errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
@@ -352,7 +353,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_delta_lake_merge_error_transitions_to_failed(
-        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay
+        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay, mock_metadata_delay
     ):
         """Test that Delta Lake merge errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
@@ -386,6 +387,7 @@ class ProcessDeltaLakeTaskTest(TransactionTestCase):
         self.assertEqual(run.error_code, 'DELTA_LAKE_ERROR')
 
 
+@patch('workers.tasks.update_stock_metadata.update_stock_metadata.delay')
 @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
 class ProcessDeltaLakeInvalidInputTest(TransactionTestCase):
     """Tests for invalid input handling in process_delta_lake task."""
@@ -396,7 +398,7 @@ class ProcessDeltaLakeInvalidInputTest(TransactionTestCase):
         self.stock = Stock.objects.create(ticker='AAPL')
     
     @patch('workers.tasks.queue_for_delta._download_from_storage')
-    def test_malformed_uuid_raises_non_retryable_error(self, mock_download, mock_discord_delay):
+    def test_malformed_uuid_raises_non_retryable_error(self, mock_download, mock_discord_delay, mock_metadata_delay):
         """Test that a malformed run_id (invalid UUID) raises NonRetryableError."""
         # Execute task with malformed UUID
         malformed_run_id = 'not-a-valid-uuid'
@@ -413,7 +415,7 @@ class ProcessDeltaLakeInvalidInputTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_malformed_uuid_does_not_crash_with_various_formats(
-        self, mock_download, mock_discord_delay
+        self, mock_download, mock_discord_delay, mock_metadata_delay
     ):
         """Test that various malformed UUID formats are handled gracefully."""
         malformed_ids = [
@@ -437,7 +439,7 @@ class ProcessDeltaLakeInvalidInputTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_valid_uuid_proceeds_normally(
-        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay
+        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay, mock_metadata_delay
     ):
         """Test that a valid UUID proceeds normally."""
         # Create run with valid UUID
@@ -465,10 +467,11 @@ class ProcessDeltaLakeInvalidInputTest(TransactionTestCase):
         
         # Verify successful execution
         self.assertEqual(result['run_id'], str(run.id))
-        self.assertEqual(result['state'], IngestionState.DELTA_FINISHED)
+        self.assertEqual(result['state'], IngestionState.DONE)
         self.assertFalse(result['skipped'])
 
 
+@patch('workers.tasks.update_stock_metadata.update_stock_metadata.delay')
 @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
 class TTMDataProcessingTest(TransactionTestCase):
     """Tests for Trailing Twelve Month (TTM) data processing."""
@@ -482,7 +485,7 @@ class TTMDataProcessingTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_ttm_data_transformation_with_period_replacement(
-        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay
+        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay, mock_metadata_delay
     ):
         """Test that TTM data is processed and period_end_date is replaced with latest quarterly date."""
         # Create run in QUEUED_FOR_DELTA state
@@ -537,7 +540,7 @@ class TTMDataProcessingTest(TransactionTestCase):
         
         # Verify successful execution
         self.assertEqual(result['run_id'], str(run.id))
-        self.assertEqual(result['state'], IngestionState.DELTA_FINISHED)
+        self.assertEqual(result['state'], IngestionState.DONE)
         self.assertFalse(result['skipped'])
         self.assertEqual(result['records_processed'], 5)  # 3 financials + 1 metadata + 1 ttm
         
@@ -556,7 +559,7 @@ class TTMDataProcessingTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_ttm_transformation_without_quarterly_data(
-        self, mock_download, mock_discord_delay
+        self, mock_download, mock_discord_delay, mock_metadata_delay
     ):
         """Test that TTM data is skipped when there's no quarterly period_end_date."""
         # Sample data with TTM but no quarterly data
@@ -587,7 +590,7 @@ class TTMDataProcessingTest(TransactionTestCase):
         self.assertIn('metadata', unified_df['record_type'].to_list())
         self.assertNotIn('ttm', unified_df['record_type'].to_list())
     
-    def test_ttm_transformation_with_real_data_structure(self, mock_discord_delay):
+    def test_ttm_transformation_with_real_data_structure(self, mock_discord_delay, mock_metadata_delay):
         """Test TTM transformation with real AAPL JSON structure."""
         from workers.tasks.queue_for_delta import _transform_data_to_polars
         import polars as pl
@@ -636,7 +639,7 @@ class TTMDataProcessingTest(TransactionTestCase):
     @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
     @patch('workers.tasks.queue_for_delta._download_from_storage')
     def test_ttm_only_data_processing(
-        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay
+        self, mock_download, mock_transform, mock_process_stocks, mock_discord_delay, mock_metadata_delay
     ):
         """Test processing when only TTM data is available (no financials or metadata)."""
         # Create run in QUEUED_FOR_DELTA state
@@ -665,7 +668,7 @@ class TTMDataProcessingTest(TransactionTestCase):
         
         # Verify successful execution with only TTM data
         self.assertEqual(result['run_id'], str(run.id))
-        self.assertEqual(result['state'], IngestionState.DELTA_FINISHED)
+        self.assertEqual(result['state'], IngestionState.DONE)
         self.assertFalse(result['skipped'])
         self.assertEqual(result['records_processed'], 1)
         self.assertEqual(result['processed_uri'], 's3://stock-delta-lake/stocks')
@@ -673,7 +676,7 @@ class TTMDataProcessingTest(TransactionTestCase):
         # Verify stocks table was processed
         mock_process_stocks.assert_called_once()
     
-    def test_ttm_transformation_empty_quarterly_array(self, mock_discord_delay):
+    def test_ttm_transformation_empty_quarterly_array(self, mock_discord_delay, mock_metadata_delay):
         """Test TTM transformation when quarterly period_end_date array is empty."""
         from workers.tasks.queue_for_delta import _transform_data_to_polars
         import polars as pl
@@ -702,7 +705,7 @@ class TTMDataProcessingTest(TransactionTestCase):
         self.assertNotIn('ttm', unified_df['record_type'].to_list())
         self.assertIn('metadata', unified_df['record_type'].to_list())
     
-    def test_ttm_transformation_multiple_quarters(self, mock_discord_delay):
+    def test_ttm_transformation_multiple_quarters(self, mock_discord_delay, mock_metadata_delay):
         """Test TTM transformation uses the last (most recent) quarterly date."""
         from workers.tasks.queue_for_delta import _transform_data_to_polars
         import polars as pl
