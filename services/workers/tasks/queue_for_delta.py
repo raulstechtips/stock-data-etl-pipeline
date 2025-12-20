@@ -319,6 +319,15 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
                 "Failed to transition to DONE or queue metadata task",
                 extra={"run_id": run_id, "ticker": ticker}
             )
+            # Return success with DELTA_FINISHED state since Delta processing succeeded
+            return ProcessDeltaLakeResult(
+                run_id=str(run_id),
+                ticker=ticker,
+                state=IngestionState.DELTA_FINISHED,
+                skipped=False,
+                processed_uri=processed_uri,
+                records_processed=total_records
+            )
             
     except NonRetryableError:
         raise
