@@ -29,6 +29,7 @@ app.conf.task_routes = {
     'workers.tasks.fetch_stock_data': {'queue': 'queue_for_fetch'},
     'workers.tasks.process_delta_lake': {'queue': 'queue_for_delta'},
     'workers.tasks.send_discord_notification': {'queue': 'send_discord_notifications'},
+    'workers.tasks.update_stock_metadata': {'queue': 'queue_for_fetch'},  # Low priority, non-critical
 }
 
 # Auto-discover tasks from all registered Django apps
