@@ -9,7 +9,15 @@ This module contains comprehensive tests for:
 
 from .models import StockModelTest, StockIngestionRunModelTest, StockIngestionRunManagerTest
 from .services import StockIngestionServiceTest, StockIngestionServiceTransactionTest, StateTransitionTest
-from .views import StockStatusAPITest, QueueForFetchAPITest, UpdateRunStateAPITest, RunDetailAPITest
+from .views import (
+    StockStatusAPITest,
+    QueueForFetchAPITest,
+    RunDetailAPITest,
+    TickerListAPITest,
+    TickerDetailAPITest,
+    RunListAPITest,
+    TickerRunsListAPITest,
+)
 
 __all__ = [
     'StockModelTest',
@@ -20,6 +28,9 @@ __all__ = [
     'StateTransitionTest',
     'StockStatusAPITest',
     'QueueForFetchAPITest',
-    'UpdateRunStateAPITest',
-    'RunDetailAPITest'
+    'RunDetailAPITest',
+    'TickerListAPITest',
+    'TickerDetailAPITest',
+    'RunListAPITest',
+    'TickerRunsListAPITest',
 ]

@@ -262,129 +262,8 @@ class QueueForFetchAPITest(APITestCase):
             self.assertIn('another request', response.data['error']['message'].lower())
 
 
-class UpdateRunStateAPITest(APITestCase):
-    """Tests for the PATCH /api/runs/<run_id>/state endpoint."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.stock = Stock.objects.create(ticker='AAPL')
-        self.run = StockIngestionRun.objects.create(
-            stock=self.stock,
-            state=IngestionState.QUEUED_FOR_FETCH
-        )
-        self.url = reverse('api:update-run-state', kwargs={'run_id': str(self.run.id)})
-
-    def test_update_valid_state_transition(self):
-        """Test updating with a valid state transition."""
-        response = self.client.patch(
-            self.url,
-            {'state': 'FETCHING'},
-            format='json'
-        )
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['state'], 'FETCHING')
-
-    def test_update_invalid_state_transition(self):
-        """Test updating with an invalid state transition."""
-        response = self.client.patch(
-            self.url,
-            {'state': 'DONE'},  # Invalid: QUEUED_FOR_FETCH -> DONE
-            format='json'
-        )
-        
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-        self.assertIn('message', response.data['error'])
-        self.assertIn('code', response.data['error'])
-        self.assertEqual(response.data['error']['code'], 'INVALID_STATE_TRANSITION')
-        self.assertIn('details', response.data['error'])
-
-    def test_update_to_failed_requires_error_info(self):
-        """Test that transitioning to FAILED requires error info."""
-        response = self.client.patch(
-            self.url,
-            {'state': 'FAILED'},  # Missing error_code and error_message
-            format='json'
-        )
-        
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-        self.assertIn('message', response.data['error'])
-        self.assertIn('code', response.data['error'])
-        self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
-        self.assertIn('details', response.data['error'])
-
-    def test_update_to_failed_with_error_info(self):
-        """Test transitioning to FAILED with proper error info."""
-        response = self.client.patch(
-            self.url,
-            {
-                'state': 'FAILED',
-                'error_code': 'NETWORK_ERROR',
-                'error_message': 'Connection timed out'
-            },
-            format='json'
-        )
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['state'], 'FAILED')
-        self.assertEqual(response.data['error_code'], 'NETWORK_ERROR')
-
-    def test_update_run_not_found(self):
-        """Test updating a non-existent run."""
-        fake_id = uuid.uuid4()
-        url = reverse('api:update-run-state', kwargs={'run_id': str(fake_id)})
-        
-        response = self.client.patch(
-            url,
-            {'state': 'FETCHING'},
-            format='json'
-        )
-        
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn('error', response.data)
-        self.assertIn('message', response.data['error'])
-        self.assertIn('code', response.data['error'])
-        self.assertEqual(response.data['error']['code'], 'RUN_NOT_FOUND')
-        self.assertIn('details', response.data['error'])
-        self.assertEqual(response.data['error']['details']['run_id'], str(fake_id))
-
-    def test_update_invalid_uuid_format(self):
-        """Test updating with an invalid UUID format."""
-        url = reverse('api:update-run-state', kwargs={'run_id': 'invalid-uuid'})
-        
-        response = self.client.patch(
-            url,
-            {'state': 'FETCHING'},
-            format='json'
-        )
-        
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-        self.assertIn('message', response.data['error'])
-        self.assertIn('code', response.data['error'])
-        self.assertEqual(response.data['error']['code'], 'INVALID_UUID')
-        self.assertIn('details', response.data['error'])
-        self.assertEqual(response.data['error']['details']['run_id'], 'invalid-uuid')
-
-    def test_update_with_data_uris(self):
-        """Test updating with data URIs."""
-        response = self.client.patch(
-            self.url,
-            {
-                'state': 'FETCHING',
-                'raw_data_uri': 's3://bucket/raw/AAPL'
-            },
-            format='json'
-        )
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['raw_data_uri'], 's3://bucket/raw/AAPL')
-
-
 class RunDetailAPITest(APITestCase):
-    """Tests for the GET /api/runs/<run_id> endpoint."""
+    """Tests for the GET /api/run/<run_id>/detail endpoint."""
 
     def setUp(self):
         """Set up test fixtures."""
@@ -434,3 +313,236 @@ class RunDetailAPITest(APITestCase):
         self.assertEqual(response.data['error']['code'], 'INVALID_UUID')
         self.assertIn('details', response.data['error'])
         self.assertEqual(response.data['error']['details']['run_id'], 'invalid-uuid')
+
+
+class TickerListAPITest(APITestCase):
+    """Tests for the GET /api/tickers endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create multiple stocks for pagination testing
+        Stock.objects.create(ticker='AAPL', name='Apple Inc.')
+        Stock.objects.create(ticker='GOOGL', name='Alphabet Inc.')
+        Stock.objects.create(ticker='MSFT', name='Microsoft Corporation')
+
+    def test_list_tickers(self):
+        """Test listing all tickers."""
+        url = reverse('api:ticker-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 3)
+        
+        # Verify ticker data
+        tickers = [item['ticker'] for item in response.data['results']]
+        self.assertIn('AAPL', tickers)
+        self.assertIn('GOOGL', tickers)
+        self.assertIn('MSFT', tickers)
+
+    def test_list_tickers_empty(self):
+        """Test listing tickers when none exist."""
+        Stock.objects.all().delete()
+        
+        url = reverse('api:ticker-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_tickers_pagination(self):
+        """Test cursor pagination for tickers."""
+        # Create more stocks to test pagination
+        for i in range(55):
+            Stock.objects.create(ticker=f'TEST{i:02d}')
+        
+        url = reverse('api:ticker-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIn('next', response.data)
+        # Default page size is 50
+        self.assertEqual(len(response.data['results']), 50)
+        
+        # Test next page
+        if response.data['next']:
+            next_response = self.client.get(response.data['next'])
+            self.assertEqual(next_response.status_code, status.HTTP_200_OK)
+            self.assertGreater(len(next_response.data['results']), 0)
+
+
+class TickerDetailAPITest(APITestCase):
+    """Tests for the GET /api/ticker/<ticker>/detail endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.stock = Stock.objects.create(
+            ticker='AAPL',
+            name='Apple Inc.',
+            sector='Technology'
+        )
+
+    def test_get_ticker_detail(self):
+        """Test getting ticker details."""
+        url = reverse('api:ticker-detail', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['ticker'], 'AAPL')
+        self.assertEqual(response.data['name'], 'Apple Inc.')
+        self.assertEqual(response.data['sector'], 'Technology')
+
+    def test_get_ticker_detail_case_insensitive(self):
+        """Test that ticker detail lookup is case-insensitive."""
+        url = reverse('api:ticker-detail', kwargs={'ticker': 'aapl'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['ticker'], 'AAPL')
+
+    def test_get_ticker_detail_not_found(self):
+        """Test getting details for a non-existent ticker."""
+        url = reverse('api:ticker-detail', kwargs={'ticker': 'NONEXISTENT'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'STOCK_NOT_FOUND')
+        self.assertIn('details', response.data['error'])
+        self.assertEqual(response.data['error']['details']['ticker'], 'NONEXISTENT')
+
+
+class RunListAPITest(APITestCase):
+    """Tests for the GET /api/runs endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.stock1 = Stock.objects.create(ticker='AAPL')
+        self.stock2 = Stock.objects.create(ticker='GOOGL')
+        
+        # Create multiple runs
+        StockIngestionRun.objects.create(stock=self.stock1, state=IngestionState.DONE)
+        StockIngestionRun.objects.create(stock=self.stock1, state=IngestionState.FETCHING)
+        StockIngestionRun.objects.create(stock=self.stock2, state=IngestionState.QUEUED_FOR_FETCH)
+
+    def test_list_runs(self):
+        """Test listing all runs."""
+        url = reverse('api:run-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 3)
+
+    def test_list_runs_empty(self):
+        """Test listing runs when none exist."""
+        StockIngestionRun.objects.all().delete()
+        
+        url = reverse('api:run-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_runs_pagination(self):
+        """Test cursor pagination for runs."""
+        # Create more runs to test pagination
+        for i in range(55):
+            StockIngestionRun.objects.create(
+                stock=self.stock1,
+                state=IngestionState.DONE
+            )
+        
+        url = reverse('api:run-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIn('next', response.data)
+        # Default page size is 50
+        self.assertEqual(len(response.data['results']), 50)
+
+
+class TickerRunsListAPITest(APITestCase):
+    """Tests for the GET /api/ticker/<ticker>/runs endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.stock1 = Stock.objects.create(ticker='AAPL')
+        self.stock2 = Stock.objects.create(ticker='GOOGL')
+        
+        # Create runs for AAPL
+        StockIngestionRun.objects.create(stock=self.stock1, state=IngestionState.DONE)
+        StockIngestionRun.objects.create(stock=self.stock1, state=IngestionState.FETCHING)
+        StockIngestionRun.objects.create(stock=self.stock1, state=IngestionState.FAILED)
+        
+        # Create runs for GOOGL
+        StockIngestionRun.objects.create(stock=self.stock2, state=IngestionState.QUEUED_FOR_FETCH)
+
+    def test_list_ticker_runs(self):
+        """Test listing runs for a specific ticker."""
+        url = reverse('api:ticker-runs-list', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 3)
+        
+        # Verify all runs are for AAPL
+        for run in response.data['results']:
+            self.assertEqual(run['ticker'], 'AAPL')
+
+    def test_list_ticker_runs_case_insensitive(self):
+        """Test that ticker runs lookup is case-insensitive."""
+        url = reverse('api:ticker-runs-list', kwargs={'ticker': 'aapl'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 3)
+
+    def test_list_ticker_runs_no_runs(self):
+        """Test listing runs for a ticker with no runs."""
+        stock3 = Stock.objects.create(ticker='MSFT')
+        
+        url = reverse('api:ticker-runs-list', kwargs={'ticker': 'MSFT'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_ticker_runs_not_found(self):
+        """Test listing runs for a non-existent ticker."""
+        url = reverse('api:ticker-runs-list', kwargs={'ticker': 'NONEXISTENT'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'STOCK_NOT_FOUND')
+        self.assertIn('details', response.data['error'])
+        self.assertEqual(response.data['error']['details']['ticker'], 'NONEXISTENT')
+
+    def test_list_ticker_runs_pagination(self):
+        """Test cursor pagination for ticker runs."""
+        # Create more runs to test pagination
+        for i in range(55):
+            StockIngestionRun.objects.create(
+                stock=self.stock1,
+                state=IngestionState.DONE
+            )
+        
+        url = reverse('api:ticker-runs-list', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIn('next', response.data)
+        # Default page size is 50
+        self.assertEqual(len(response.data['results']), 50)
