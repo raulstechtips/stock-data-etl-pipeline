@@ -2,9 +2,13 @@
 API Views for Stock Ticker ETL Pipeline.
 
 This module contains the API views for:
+- GET /tickers - List all stocks
+- GET /ticker/<ticker>/detail - Get stock details for a specific stock
 - GET /ticker/<ticker>/status - Get the current status of a stock
 - POST /ticker/queue - Queue a stock for ingestion
-- PATCH /runs/<run_id>/state - Update a run's state (for internal services)
+- GET /runs - List all ingestion runs
+- GET /runs/ticker/<ticker> - List runs for a specific ticker
+- GET /run/<run_id>/detail - Get details of a specific run
 """
 
 import logging
@@ -13,28 +17,102 @@ from uuid import UUID
 from django.db import IntegrityError
 from celery.exceptions import CeleryError, OperationalError as CeleryOperationalError
 from rest_framework import status
+from rest_framework.generics import ListAPIView
+from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import IngestionState
+from api.models import IngestionState, Stock, StockIngestionRun
 from api.serializers import (
     QueueForFetchRequestSerializer,
     StockIngestionRunSerializer,
+    StockSerializer,
     StockStatusResponseSerializer,
-    UpdateRunStateRequestSerializer,
 )
 from api.services import StockIngestionService
 from api.services.stock_ingestion_service import (
     IngestionRunNotFoundError,
-    InvalidStateTransitionError,
     StockNotFoundError,
 )
 from workers.tasks.queue_for_fetch import fetch_stock_data
 
 
 logger = logging.getLogger(__name__)
+
+
+class StandardCursorPagination(CursorPagination):
+    """Standard cursor pagination configuration for list views."""
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+    ordering = '-created_at'
+
+
+class TickerListView(ListAPIView):
+    """
+    API endpoint for listing all stocks.
+    
+    GET /tickers
+    
+    Returns a paginated list of all stocks with cursor-based pagination.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = StockSerializer
+    pagination_class = StandardCursorPagination
+    queryset = Stock.objects.all().order_by('-created_at')
+
+
+class TickerDetailView(APIView):
+    """
+    API endpoint for getting details of a specific stock.
+    
+    GET /ticker/<ticker>/detail
+    
+    Returns detailed information about a stock.
+    """
+    permission_classes = [AllowAny]
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.service = StockIngestionService()
+
+    def get(self, request: Request, ticker: str) -> Response:
+        """
+        Get details of a specific stock.
+        
+        Args:
+            request: DRF Request object
+            ticker: Stock ticker symbol from URL path
+            
+        Returns:
+            Response with stock details or 404 if not found
+        """
+        try:
+            stock = Stock.objects.get(ticker=ticker.upper())
+            serializer = StockSerializer(stock)
+            logger.info(
+                "Stock details retrieved successfully",
+                extra={'ticker': ticker.upper(), 'stock_id': str(stock.id)}
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Stock.DoesNotExist:
+            logger.warning(
+                "Stock not found",
+                extra={'ticker': ticker.upper()}
+            )
+            return Response(
+                {
+                    'error': {
+                        'message': f"Stock with ticker '{ticker.upper()}' not found",
+                        'code': 'STOCK_NOT_FOUND',
+                        'details': {'ticker': ticker.upper()}
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 
 class StockStatusView(APIView):
@@ -258,146 +336,83 @@ class QueueForFetchView(APIView):
             )
 
 
-class UpdateRunStateView(APIView):
+class RunListView(ListAPIView):
     """
-    API endpoint for updating the state of an ingestion run.
+    API endpoint for listing all ingestion runs.
     
-    PATCH /runs/<run_id>/state
+    GET /runs
     
-    Used by internal services to update the state of a run
-    as it progresses through the ETL pipeline.
+    Returns a paginated list of all ingestion runs with cursor-based pagination.
     """
     permission_classes = [AllowAny]
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.service = StockIngestionService()
+    serializer_class = StockIngestionRunSerializer
+    pagination_class = StandardCursorPagination
+    queryset = StockIngestionRun.objects.select_related('stock').all().order_by('-created_at')
 
-    def patch(self, request: Request, run_id: str) -> Response:
+
+class TickerRunsListView(ListAPIView):
+    """
+    API endpoint for listing ingestion runs for a specific ticker.
+    
+    GET /runs/ticker/<ticker>
+    
+    Returns a paginated list of runs for the specified ticker.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = StockIngestionRunSerializer
+    pagination_class = StandardCursorPagination
+
+    def get_queryset(self):
+        """Get runs filtered by ticker from URL parameter."""
+        ticker = self.kwargs['ticker'].upper()
+        return (
+            StockIngestionRun.objects
+            .select_related('stock')
+            .filter(stock__ticker=ticker)
+            .order_by('-created_at')
+        )
+    
+    def list(self, request: Request, *args, **kwargs) -> Response:
         """
-        Update the state of an ingestion run.
+        List runs for a ticker, returning 404 if ticker doesn't exist.
         
-        Request body:
-            {
-                "state": "FETCHING",
-                "error_code": "FETCH_TIMEOUT",     // required if FAILED
-                "error_message": "Connection timed out",  // required if FAILED
-                "raw_data_uri": "s3://bucket/...", // optional
-                "processed_data_uri": "..."        // optional
-            }
-        
+        Args:
+            request: DRF Request object
+            
         Returns:
-            - 200: State updated successfully
-            - 400: Invalid request or state transition
-            - 404: Run not found
+            Response with paginated list of runs or 404 if ticker not found
         """
-        # Validate UUID format
-        try:
-            run_uuid = UUID(run_id)
-        except ValueError as e:
+        ticker = self.kwargs['ticker'].upper()
+        
+        # Check if stock exists
+        if not Stock.objects.filter(ticker=ticker).exists():
             logger.warning(
-                "Invalid UUID format in update run state request",
-                extra={'run_id': run_id, 'error': str(e)}
+                "Stock not found for runs list",
+                extra={'ticker': ticker}
             )
             return Response(
                 {
                     'error': {
-                        'message': f"Invalid run ID format: '{run_id}'",
-                        'code': 'INVALID_UUID',
-                        'details': {'run_id': run_id}
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        serializer = UpdateRunStateRequestSerializer(data=request.data)
-        
-        if not serializer.is_valid():
-            logger.warning(
-                "Update run state validation failed",
-                extra={'run_id': run_id, 'errors': serializer.errors}
-            )
-            return Response(
-                {
-                    'error': {
-                        'message': 'Validation failed',
-                        'code': 'VALIDATION_ERROR',
-                        'details': serializer.errors
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        validated_data = serializer.validated_data
-        
-        try:
-            run = self.service.update_run_state(
-                run_id=run_uuid,
-                new_state=validated_data['state'],
-                error_code=validated_data.get('error_code'),
-                error_message=validated_data.get('error_message'),
-                raw_data_uri=validated_data.get('raw_data_uri'),
-                processed_data_uri=validated_data.get('processed_data_uri'),
-            )
-            
-            logger.info(
-                "Run state updated successfully",
-                extra={
-                    'run_id': str(run_uuid),
-                    'new_state': validated_data['state'],
-                    'ticker': run.stock.ticker,
-                    'error_code': validated_data.get('error_code'),
-                }
-            )
-            
-            response_serializer = StockIngestionRunSerializer(run)
-            return Response(
-                response_serializer.data,
-                status=status.HTTP_200_OK
-            )
-            
-        except IngestionRunNotFoundError as e:
-            logger.warning(
-                "Ingestion run not found for state update",
-                extra={'run_id': str(run_uuid), 'error': str(e)}
-            )
-            return Response(
-                {
-                    'error': {
-                        'message': str(e),
-                        'code': 'RUN_NOT_FOUND',
-                        'details': {'run_id': str(run_uuid)}
+                        'message': f"Stock with ticker '{ticker}' not found",
+                        'code': 'STOCK_NOT_FOUND',
+                        'details': {'ticker': ticker}
                     }
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
-            
-        except InvalidStateTransitionError as e:
-            logger.warning(
-                "Invalid state transition attempted",
-                extra={
-                    'run_id': str(run_uuid),
-                    'requested_state': validated_data['state'],
-                    'error': str(e)
-                }
-            )
-            return Response(
-                {
-                    'error': {
-                        'message': str(e),
-                        'code': 'INVALID_STATE_TRANSITION',
-                        'details': {'run_id': str(run_uuid)}
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        
+        logger.info(
+            "Listing runs for ticker",
+            extra={'ticker': ticker}
+        )
+        return super().list(request, *args, **kwargs)
 
 
 class RunDetailView(APIView):
     """
     API endpoint for getting details of a specific ingestion run.
     
-    GET /runs/<run_id>
+    GET /run/<run_id>/detail
     
     Returns detailed information about an ingestion run.
     """

@@ -5,10 +5,13 @@ This module defines the URL patterns for the stock ingestion
 status tracking endpoints.
 
 Endpoints:
-    GET  /ticker/<ticker>/status - Get current status of a stock
-    POST /ticker/queue           - Queue a stock for ingestion
-    GET  /runs/<run_id>          - Get details of a specific run
-    PATCH /runs/<run_id>/state   - Update state of a run (internal)
+    GET  /tickers                  - List all stocks
+    GET  /ticker/<ticker>/detail   - Get stock details
+    GET  /ticker/<ticker>/status   - Get current status of a stock
+    POST /ticker/queue             - Queue a stock for ingestion
+    GET  /runs                     - List all ingestion runs
+    GET  /runs/ticker/<ticker>     - List runs for a specific ticker
+    GET  /run/<run_id>/detail      - Get details of a specific run
 """
 
 from django.urls import path
@@ -16,19 +19,37 @@ from django.urls import path
 from api.views import (
     QueueForFetchView,
     RunDetailView,
+    RunListView,
     StockStatusView,
-    UpdateRunStateView,
+    TickerDetailView,
+    TickerListView,
+    TickerRunsListView,
 )
 
 
 app_name = 'api'
 
 urlpatterns = [
-    # Stock status endpoints
+    # Stock list and detail endpoints
+    path(
+        'tickers',
+        TickerListView.as_view(),
+        name='ticker-list'
+    ),
+    path(
+        'ticker/<str:ticker>/detail',
+        TickerDetailView.as_view(),
+        name='ticker-detail'
+    ),
     path(
         'ticker/<str:ticker>/status',
         StockStatusView.as_view(),
         name='stock-status'
+    ),
+    path(
+        'runs/ticker/<str:ticker>',
+        TickerRunsListView.as_view(),
+        name='ticker-runs-list'
     ),
     path(
         'ticker/queue',
@@ -36,16 +57,16 @@ urlpatterns = [
         name='queue-for-fetch'
     ),
     
-    # Run management endpoints
+    # Run list and detail endpoints
     path(
-        'runs/<str:run_id>',
-        RunDetailView.as_view(),
-        name='run-detail'
+        'runs',
+        RunListView.as_view(),
+        name='run-list'
     ),
     path(
-        'runs/<str:run_id>/state',
-        UpdateRunStateView.as_view(),
-        name='update-run-state'
+        'run/<str:run_id>/detail',
+        RunDetailView.as_view(),
+        name='run-detail'
     ),
 ]
 
