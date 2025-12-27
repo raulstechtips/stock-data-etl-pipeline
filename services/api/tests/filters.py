@@ -12,7 +12,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
 
 class TickerListFilterAPITest(APITestCase):
     """Tests for filtering on the GET /api/tickers endpoint."""
@@ -482,3 +482,162 @@ class TickerRunsListFilterAPITest(APITestCase):
         # Should only return AAPL runs, not GOOGL
         for run in response.data['results']:
             self.assertEqual(run['ticker'], 'AAPL')
+
+
+class BulkQueueRunFilterAPITest(APITestCase):
+    """Tests for filtering ingestion runs by bulk_queue_run."""
+
+    def setUp(self):
+        """Set up test fixtures with bulk queue runs."""
+        # Create stocks
+        self.stock_aapl = Stock.objects.create(ticker='AAPL')
+        self.stock_googl = Stock.objects.create(ticker='GOOGL')
+        self.stock_msft = Stock.objects.create(ticker='MSFT')
+        
+        # Create bulk queue runs
+        self.bulk_run1 = BulkQueueRun.objects.create(
+            requested_by='admin@example.com',
+            total_stocks=100,
+            queued_count=95,
+            skipped_count=5,
+            error_count=0
+        )
+        
+        self.bulk_run2 = BulkQueueRun.objects.create(
+            requested_by='system',
+            total_stocks=100,
+            queued_count=90,
+            skipped_count=8,
+            error_count=2
+        )
+        
+        # Create runs linked to bulk_run1
+        self.run1 = StockIngestionRun.objects.create(
+            stock=self.stock_aapl,
+            state=IngestionState.DONE,
+            requested_by='admin@example.com',
+            bulk_queue_run=self.bulk_run1
+        )
+        
+        self.run2 = StockIngestionRun.objects.create(
+            stock=self.stock_googl,
+            state=IngestionState.FAILED,
+            requested_by='admin@example.com',
+            bulk_queue_run=self.bulk_run1
+        )
+        
+        # Create run linked to bulk_run2
+        self.run3 = StockIngestionRun.objects.create(
+            stock=self.stock_msft,
+            state=IngestionState.FETCHING,
+            requested_by='system',
+            bulk_queue_run=self.bulk_run2
+        )
+        
+        # Create run without bulk_queue_run (manual queue)
+        self.run4 = StockIngestionRun.objects.create(
+            stock=self.stock_aapl,
+            state=IngestionState.QUEUED_FOR_FETCH,
+            requested_by='user@example.com',
+            bulk_queue_run=None
+        )
+
+    def test_filter_by_bulk_queue_run(self):
+        """Test filtering runs by bulk_queue_run UUID."""
+        url = reverse('api:run-list')
+        response = self.client.get(url, {'bulk_queue_run': str(self.bulk_run1.id)})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+        
+        # Verify all runs belong to bulk_run1
+        run_ids = [run['id'] for run in response.data['results']]
+        self.assertIn(str(self.run1.id), run_ids)
+        self.assertIn(str(self.run2.id), run_ids)
+        self.assertNotIn(str(self.run3.id), run_ids)
+        self.assertNotIn(str(self.run4.id), run_ids)
+
+    def test_filter_by_bulk_queue_run_different_bulk_run(self):
+        """Test filtering runs by different bulk_queue_run UUID."""
+        url = reverse('api:run-list')
+        response = self.client.get(url, {'bulk_queue_run': str(self.bulk_run2.id)})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(self.run3.id))
+
+    def test_filter_by_bulk_queue_run_combined_with_state(self):
+        """Test combining bulk_queue_run filter with state filter."""
+        url = reverse('api:run-list')
+        response = self.client.get(url, {
+            'bulk_queue_run': str(self.bulk_run1.id),
+            'state': 'FAILED'
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(self.run2.id))
+        self.assertEqual(response.data['results'][0]['state'], 'FAILED')
+
+    def test_filter_by_bulk_queue_run_combined_with_ticker(self):
+        """Test combining bulk_queue_run filter with ticker filter."""
+        url = reverse('api:run-list')
+        response = self.client.get(url, {
+            'bulk_queue_run': str(self.bulk_run1.id),
+            'ticker': 'AAPL'
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(self.run1.id))
+        self.assertEqual(response.data['results'][0]['ticker'], 'AAPL')
+
+    def test_filter_by_bulk_queue_run_nonexistent_uuid(self):
+        """Test filtering with non-existent bulk_queue_run UUID returns empty results."""
+        url = reverse('api:run-list')
+        nonexistent_uuid = '00000000-0000-0000-0000-000000000000'
+        response = self.client.get(url, {'bulk_queue_run': nonexistent_uuid})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_filter_by_bulk_queue_run_excludes_null_runs(self):
+        """Test that filtering by bulk_queue_run excludes runs without bulk_queue_run."""
+        url = reverse('api:run-list')
+        response = self.client.get(url, {'bulk_queue_run': str(self.bulk_run1.id)})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should not include run4 which has bulk_queue_run=None
+        run_ids = [run['id'] for run in response.data['results']]
+        self.assertNotIn(str(self.run4.id), run_ids)
+
+    def test_filter_by_bulk_queue_run_invalid_uuid_format(self):
+        """Test filtering with invalid UUID format is handled gracefully."""
+        url = reverse('api:run-list')
+        response = self.client.get(url, {'bulk_queue_run': 'not-a-uuid'})
+        
+        # django-filter UUIDFilter should return 400 for invalid UUID format
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_filter_by_bulk_queue_run_on_ticker_endpoint(self):
+        """Test filtering by bulk_queue_run works on ticker-specific endpoint."""
+        url = reverse('api:ticker-runs-list', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url, {'bulk_queue_run': str(self.bulk_run1.id)})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(self.run1.id))
+        self.assertEqual(response.data['results'][0]['ticker'], 'AAPL')
+
+    def test_filter_by_bulk_queue_run_combined_with_multiple_filters(self):
+        """Test combining bulk_queue_run with multiple other filters."""
+        url = reverse('api:run-list')
+        response = self.client.get(url, {
+            'bulk_queue_run': str(self.bulk_run1.id),
+            'state': 'DONE',
+            'requested_by': 'admin@example.com'
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], str(self.run1.id))
