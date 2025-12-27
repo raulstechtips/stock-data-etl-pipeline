@@ -354,7 +354,8 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         self.stock.refresh_from_db()
         self.assertEqual(self.stock.sector, 'Information Technology')
         self.assertEqual(self.stock.name, 'Apple Inc.')
-        self.assertEqual(self.stock.exchange, 'NASDAQ')
+        self.assertIsNotNone(self.stock.exchange)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
         self.assertEqual(self.stock.country, 'US')
 
     def test_partial_metadata_update_leaves_other_fields_unchanged(self):
