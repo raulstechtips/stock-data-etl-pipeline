@@ -7,7 +7,7 @@ serializing output for the stock ingestion API endpoints.
 
 from rest_framework import serializers
 
-from api.models import IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
 
 
 class StockSerializer(serializers.ModelSerializer):
@@ -104,6 +104,35 @@ class StockStatusResponseSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(allow_null=True)
 
 
+class BulkQueueRunSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the BulkQueueRun model.
+    
+    Provides information about bulk queue operations including statistics
+    on how many stocks were queued, skipped, or encountered errors.
+    """
+
+    class Meta:
+        model = BulkQueueRun
+        fields = [
+            'id',
+            'requested_by',
+            'total_stocks',
+            'queued_count',
+            'skipped_count',
+            'error_count',
+            'created_at',
+            'started_at',
+            'completed_at',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'started_at',
+            'completed_at',
+        ]
+
+
 class QueueForFetchRequestSerializer(serializers.Serializer):
     """
     Serializer for validating queue-for-fetch requests.
@@ -148,5 +177,20 @@ class QueueForFetchRequestSerializer(serializers.Serializer):
             )
         
         return normalized
+
+
+class QueueAllStocksRequestSerializer(serializers.Serializer):
+    """
+    Serializer for validating queue-all-stocks requests.
+    
+    Used to validate the POST request body when queuing all
+    stocks for ingestion via bulk operation.
+    """
+    requested_by = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        help_text="Identifier for the requesting entity"
+    )
 
 

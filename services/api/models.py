@@ -98,6 +98,60 @@ class Stock(models.Model):
         return f"<Stock(id={self.id}, ticker='{self.ticker}')>"
 
 
+class BulkQueueRun(models.Model):
+    """
+    Tracks statistics for bulk queue operations.
+    
+    This model stores aggregated statistics about bulk queue operations that
+    queue all stocks for ingestion. Unlike StockIngestionRun which tracks
+    individual stock processing, BulkQueueRun tracks the overall bulk operation
+    statistics including how many stocks were queued, skipped, or failed.
+    
+    Attributes:
+        id: UUID primary key
+        requested_by: Optional identifier for who initiated the bulk queue
+        total_stocks: Total number of stocks in database when operation started
+        queued_count: Number of stocks successfully queued
+        skipped_count: Number of stocks skipped (existing active runs)
+        error_count: Number of stocks that failed to queue
+        created_at: When the bulk queue operation was created
+        started_at: When processing actually started (nullable)
+        completed_at: When processing completed (nullable)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Request metadata
+    requested_by = models.CharField(max_length=255, null=True, blank=True)
+    
+    # Statistics
+    total_stocks = models.IntegerField(default=0)
+    queued_count = models.IntegerField(default=0)
+    skipped_count = models.IntegerField(default=0)
+    error_count = models.IntegerField(default=0)
+    
+    # Lifecycle timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'bulk_queue_runs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at'], name='idx_bulk_queue_created_at'),
+        ]
+
+    def __str__(self) -> str:
+        return f"BulkQueueRun {self.id} - {self.queued_count}/{self.total_stocks} queued"
+
+    def __repr__(self) -> str:
+        return (
+            f"<BulkQueueRun(id={self.id}, total={self.total_stocks}, "
+            f"queued={self.queued_count}, skipped={self.skipped_count}, "
+            f"errors={self.error_count})>"
+        )
+
+
 class StockIngestionRunManager(models.Manager):
     """Custom manager for StockIngestionRun with common query patterns."""
 
@@ -153,9 +207,13 @@ class StockIngestionRun(models.Model):
     Tracks the state and progress of a stock through the ETL pipeline,
     including timestamps for each phase and error information if applicable.
     
+    Can optionally be linked to a BulkQueueRun to track which bulk operation
+    created this ingestion run.
+    
     Attributes:
         id: UUID primary key
         stock: Foreign key to the Stock model
+        bulk_queue_run: Optional foreign key to BulkQueueRun (for tracking bulk operations)
         requested_by: Identifier of the entity that requested the run
         request_id: Unique identifier for the request (usually timestamp-based)
         state: Current state in the ETL pipeline
@@ -172,6 +230,16 @@ class StockIngestionRun(models.Model):
         Stock,
         on_delete=models.CASCADE,
         related_name='ingestion_runs',
+        db_index=True
+    )
+    
+    # Optional relationship to bulk queue run
+    bulk_queue_run = models.ForeignKey(
+        BulkQueueRun,
+        on_delete=models.SET_NULL,
+        related_name='ingestion_runs',
+        null=True,
+        blank=True,
         db_index=True
     )
     
