@@ -25,12 +25,17 @@ from django.utils import timezone
 
 from celery import shared_task
 
-from api.models import BulkQueueRun, Stock
+from api.models import BulkQueueRun, Stock, StockIngestionRun
 from api.services.stock_ingestion_service import StockIngestionService
 from workers.exceptions import NonRetryableError
 from workers.tasks.base import BaseTask
 
 logger = logging.getLogger(__name__)
+
+# Batch size for bulk_update operations
+# This balances memory usage against database roundtrips.
+# With 1000 stocks, this would result in ~10 bulk_update calls instead of 1000 individual saves.
+BULK_UPDATE_BATCH_SIZE = 100
 
 
 class QueueAllStocksForFetchResult(TypedDict):
@@ -112,6 +117,39 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
     # Import fetch_stock_data task here to avoid circular imports
     from workers.tasks.queue_for_fetch import fetch_stock_data
     
+    # Initialize batch list for bulk_update operations
+    bulk_queue_run_updates_batch = []
+    
+    def flush_bulk_queue_run_updates():
+        """Flush pending bulk_queue_run updates using bulk_update."""
+        nonlocal bulk_queue_run_updates_batch
+        if bulk_queue_run_updates_batch:
+            try:
+                StockIngestionRun.objects.bulk_update(
+                    bulk_queue_run_updates_batch,
+                    fields=['bulk_queue_run'],
+                    batch_size=BULK_UPDATE_BATCH_SIZE
+                )
+                logger.debug(
+                    "Flushed bulk_queue_run updates",
+                    extra={
+                        "bulk_queue_run_id": bulk_queue_run_id,
+                        "batch_size": len(bulk_queue_run_updates_batch)
+                    }
+                )
+            except Exception:
+                # Log the error but don't fail the entire operation
+                logger.exception(
+                    "Failed to flush bulk_queue_run updates",
+                    extra={
+                        "bulk_queue_run_id": bulk_queue_run_id,
+                        "batch_size": len(bulk_queue_run_updates_batch),
+                    }
+                )
+            finally:
+                # Clear the batch regardless of success/failure to avoid reprocessing
+                bulk_queue_run_updates_batch = []
+    
     # Step 4: Process each stock
     for index, ticker in enumerate(stock_tickers, start=1):
         try:
@@ -122,10 +160,14 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
                 request_id=f"bulk-queue-{bulk_queue_run_id}"
             )
             
-            # Step 4b: Link the run to the BulkQueueRun
+            # Step 4b: Link the run to the BulkQueueRun (batched for efficiency)
             if run.bulk_queue_run_id != bulk_queue_run.id:
                 run.bulk_queue_run = bulk_queue_run
-                run.save(update_fields=['bulk_queue_run'])
+                bulk_queue_run_updates_batch.append(run)
+                
+                # Flush batch if it reaches the batch size
+                if len(bulk_queue_run_updates_batch) >= BULK_UPDATE_BATCH_SIZE:
+                    flush_bulk_queue_run_updates()
             
             # Step 4c & 4d: Update counters and queue task if new run created
             if created:
@@ -207,6 +249,9 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
                     "errors": bulk_queue_run.error_count
                 }
             )
+    
+    # Flush any remaining bulk_queue_run updates
+    flush_bulk_queue_run_updates()
     
     # Step 6: Update completed_at and read final statistics from database
     bulk_queue_run.completed_at = timezone.now()
