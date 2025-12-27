@@ -21,11 +21,10 @@ import logging
 import uuid
 from typing import TypedDict
 from django.utils import timezone
-from django.db import DatabaseError, transaction
 
 from celery import shared_task
 
-from api.models import BulkQueueRun, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Stock
 from api.services.stock_ingestion_service import StockIngestionService
 from workers.exceptions import NonRetryableError
 from workers.tasks.base import BaseTask
@@ -78,9 +77,9 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
         bulk_queue_run_uuid = uuid.UUID(bulk_queue_run_id)
         bulk_queue_run = BulkQueueRun.objects.get(id=bulk_queue_run_uuid)
     except (ValueError, BulkQueueRun.DoesNotExist) as e:
-        logger.error(
+        logger.exception(
             "BulkQueueRun not found",
-            extra={"bulk_queue_run_id": bulk_queue_run_id, "error": str(e)}
+            extra={"bulk_queue_run_id": bulk_queue_run_id}
         )
         raise NonRetryableError(f"BulkQueueRun not found: {bulk_queue_run_id}") from e
     
@@ -149,12 +148,11 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
                     )
                 except Exception as queue_error:
                     # If we fail to queue the task, count it as an error
-                    logger.error(
+                    logger.exception(
                         "Failed to queue fetch_stock_data task",
                         extra={
                             "ticker": ticker,
                             "run_id": str(run.id),
-                            "error": str(queue_error),
                             "bulk_queue_run_id": bulk_queue_run_id
                         }
                     )
