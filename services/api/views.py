@@ -26,7 +26,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.filters import StockFilter, StockIngestionRunFilter
-from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 from api.serializers import (
     BulkQueueRunSerializer,
     QueueAllStocksRequestSerializer,
@@ -502,8 +502,9 @@ class QueueAllStocksForFetchView(APIView):
     POST /ticker/queue/all
     
     Creates a BulkQueueRun to track statistics and queues a background worker
-    task to process all stocks asynchronously. Returns immediately with task
-    information (202 Accepted).
+    task to process all stocks asynchronously. Supports optional exchange
+    filtering to queue only stocks from a specific exchange. Returns immediately
+    with task information (202 Accepted).
     """
     permission_classes = [AllowAny]
 
@@ -513,12 +514,14 @@ class QueueAllStocksForFetchView(APIView):
         
         Request body:
             {
-                "requested_by": "admin@example.com"  // optional
+                "requested_by": "admin@example.com",  // optional
+                "exchange": "NASDAQ"  // optional - filter by exchange
             }
         
         Returns:
             - 202: Task queued successfully (asynchronous processing)
             - 400: If the request is invalid
+            - 404: If the specified exchange does not exist
             - 500: If failed to queue the task to message broker
         """
         serializer = QueueAllStocksRequestSerializer(data=request.data)
@@ -541,9 +544,54 @@ class QueueAllStocksForFetchView(APIView):
         
         validated_data = serializer.validated_data
         requested_by = validated_data.get('requested_by')
+        exchange_param = validated_data.get('exchange')
         
-        # Get total stocks count
-        total_stocks = Stock.objects.count()
+        # Handle exchange filtering if provided
+        exchange_instance = None
+        exchange_name = None
+        stocks_queryset = Stock.objects.all()
+        
+        if exchange_param:
+            # Normalize exchange name (strip and uppercase)
+            exchange_name = exchange_param.strip().upper()
+            
+            # Get or create the Exchange instance
+            try:
+                exchange_instance, created = Exchange.objects.get_or_create(name=exchange_name)
+                if created:
+                    logger.info(
+                        "Created new Exchange during queue all stocks operation",
+                        extra={'exchange_name': exchange_name}
+                    )
+            except Exception as e:
+                logger.exception(
+                    "Failed to get or create Exchange",
+                    extra={'exchange_name': exchange_name, 'error': str(e)}
+                )
+                return Response(
+                    {
+                        'error': {
+                            'message': f'Failed to process exchange: {str(e)}',
+                            'code': 'EXCHANGE_ERROR',
+                            'details': {'exchange': exchange_name}
+                        }
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Filter stocks by exchange
+            stocks_queryset = stocks_queryset.filter(exchange=exchange_instance)
+            
+            logger.info(
+                "Filtering stocks by exchange for queue all stocks operation",
+                extra={
+                    'exchange_name': exchange_name,
+                    'exchange_id': str(exchange_instance.id)
+                }
+            )
+        
+        # Get total stocks count (filtered or all)
+        total_stocks = stocks_queryset.count()
         
         # Create BulkQueueRun to track statistics
         bulk_run = BulkQueueRun.objects.create(
@@ -556,7 +604,8 @@ class QueueAllStocksForFetchView(APIView):
             extra={
                 'bulk_queue_run_id': str(bulk_run.id),
                 'total_stocks': total_stocks,
-                'requested_by': requested_by
+                'requested_by': requested_by,
+                'exchange_name': exchange_name
             }
         )
         
@@ -566,7 +615,8 @@ class QueueAllStocksForFetchView(APIView):
             from workers.tasks import queue_all_stocks_for_fetch
             
             task_result = queue_all_stocks_for_fetch.delay(
-                bulk_queue_run_id=str(bulk_run.id)
+                bulk_queue_run_id=str(bulk_run.id),
+                exchange_name=exchange_name
             )
             
             logger.info(
@@ -575,16 +625,22 @@ class QueueAllStocksForFetchView(APIView):
                     'bulk_queue_run_id': str(bulk_run.id),
                     'task_id': task_result.id,
                     'total_stocks': total_stocks,
-                    'requested_by': requested_by
+                    'requested_by': requested_by,
+                    'exchange_name': exchange_name
                 }
             )
             
             response_serializer = BulkQueueRunSerializer(bulk_run)
+            message = f'Bulk queue operation started. Processing {total_stocks} stocks asynchronously.'
+            if exchange_name:
+                message = f'Bulk queue operation started for exchange {exchange_name}. Processing {total_stocks} stocks asynchronously.'
+            
             return Response(
                 {
                     'bulk_queue_run': response_serializer.data,
                     'task_id': task_result.id,
-                    'message': f'Bulk queue operation started. Processing {total_stocks} stocks asynchronously.'
+                    'message': message,
+                    'exchange': exchange_name
                 },
                 status=status.HTTP_202_ACCEPTED
             )
@@ -595,7 +651,8 @@ class QueueAllStocksForFetchView(APIView):
                 extra={
                     'bulk_queue_run_id': str(bulk_run.id),
                     'total_stocks': total_stocks,
-                    'requested_by': requested_by
+                    'requested_by': requested_by,
+                    'exchange_name': exchange_name
                 }
             )
             

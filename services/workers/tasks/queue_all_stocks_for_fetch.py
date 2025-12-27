@@ -25,7 +25,7 @@ from django.utils import timezone
 
 from celery import shared_task
 
-from api.models import BulkQueueRun, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, Stock, StockIngestionRun
 from api.services.stock_ingestion_service import StockIngestionService
 from workers.exceptions import NonRetryableError
 from workers.tasks.base import BaseTask
@@ -44,7 +44,7 @@ class QueueAllStocksForFetchResult(TypedDict):
     
     Attributes:
         bulk_queue_run_id: UUID of the BulkQueueRun
-        total_stocks: Total number of stocks processed
+        total_stocks: Total number of stocks processed (filtered by exchange if provided)
         queued_count: Number of stocks successfully queued
         skipped_count: Number of stocks skipped (existing active runs)
         error_count: Number of stocks that failed to queue
@@ -59,16 +59,22 @@ class QueueAllStocksForFetchResult(TypedDict):
 
 
 @shared_task(bind=True, base=BaseTask, name='workers.tasks.queue_all_stocks_for_fetch')
-def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksForFetchResult:
+def queue_all_stocks_for_fetch(
+    self,
+    bulk_queue_run_id: str,
+    exchange_name: str | None = None
+) -> QueueAllStocksForFetchResult:
     """
     Queue all stocks for fetching in a bulk operation.
     
-    This task processes all stocks in the database and queues them for
-    ingestion. It updates the BulkQueueRun statistics throughout processing
-    and handles individual stock failures gracefully.
+    This task processes all stocks in the database (or filtered by exchange)
+    and queues them for ingestion. It updates the BulkQueueRun statistics
+    throughout processing and handles individual stock failures gracefully.
     
     Args:
         bulk_queue_run_id: UUID string of the BulkQueueRun to track statistics
+        exchange_name: Optional exchange name to filter stocks by (e.g., 'NASDAQ', 'NYSE')
+                      If provided, only stocks belonging to this exchange will be queued.
         
     Returns:
         QueueAllStocksForFetchResult: Result object with statistics about the operation
@@ -76,7 +82,13 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
     Raises:
         NonRetryableError: If the BulkQueueRun is not found or other critical errors occur
     """
-    logger.info("Starting queue_all_stocks_for_fetch task", extra={"bulk_queue_run_id": bulk_queue_run_id})
+    logger.info(
+        "Starting queue_all_stocks_for_fetch task",
+        extra={
+            "bulk_queue_run_id": bulk_queue_run_id,
+            "exchange_name": exchange_name
+        }
+    )
     
     # Step 1: Retrieve the BulkQueueRun instance
     try:
@@ -94,12 +106,62 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
     bulk_queue_run.save(update_fields=['started_at'])
     logger.info(
         "Updated BulkQueueRun started_at",
-        extra={"bulk_queue_run_id": bulk_queue_run_id, "started_at": bulk_queue_run.started_at}
+        extra={
+            "bulk_queue_run_id": bulk_queue_run_id,
+            "started_at": bulk_queue_run.started_at,
+            "exchange_name": exchange_name
+        }
     )
     
-    # Step 3: Query all stocks efficiently
+    # Step 3: Query all stocks efficiently (with optional exchange filtering)
     # Using values_list to get just the tickers (more memory efficient)
-    stock_tickers = list(Stock.objects.values_list('ticker', flat=True).order_by('ticker'))
+    stocks_queryset = Stock.objects.all()
+    
+    # Apply exchange filtering if provided
+    if exchange_name:
+        # Normalize exchange name (strip and uppercase)
+        normalized_exchange_name = exchange_name.strip().upper()
+        
+        try:
+            # Get the Exchange instance
+            exchange_instance = Exchange.objects.get(name=normalized_exchange_name)
+            
+            # Filter stocks by exchange
+            stocks_queryset = stocks_queryset.filter(exchange=exchange_instance)
+            
+            logger.info(
+                "Filtering stocks by exchange in queue_all_stocks_for_fetch task",
+                extra={
+                    "bulk_queue_run_id": bulk_queue_run_id,
+                    "exchange_name": normalized_exchange_name,
+                    "exchange_id": str(exchange_instance.id)
+                }
+            )
+        except Exchange.DoesNotExist:
+            # Exchange not found - log warning and return early
+            logger.warning(
+                "Exchange not found in queue_all_stocks_for_fetch task",
+                extra={
+                    "bulk_queue_run_id": bulk_queue_run_id,
+                    "exchange_name": normalized_exchange_name
+                }
+            )
+            
+            # Update completed_at to mark task as finished
+            bulk_queue_run.completed_at = timezone.now()
+            bulk_queue_run.save(update_fields=['completed_at'])
+            
+            # Return early with 0 stocks processed
+            return QueueAllStocksForFetchResult(
+                bulk_queue_run_id=bulk_queue_run_id,
+                total_stocks=0,
+                queued_count=0,
+                skipped_count=0,
+                error_count=0,
+                success=False
+            )
+    
+    stock_tickers = list(stocks_queryset.values_list('ticker', flat=True).order_by('ticker'))
     total_stocks = len(stock_tickers)
     
     # Update total_stocks count in BulkQueueRun
@@ -108,7 +170,11 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
     
     logger.info(
         "Retrieved stocks for processing",
-        extra={"bulk_queue_run_id": bulk_queue_run_id, "total_stocks": total_stocks}
+        extra={
+            "bulk_queue_run_id": bulk_queue_run_id,
+            "total_stocks": total_stocks,
+            "exchange_name": exchange_name
+        }
     )
     
     # Initialize service for queueing stocks
@@ -269,7 +335,8 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
             "queued": bulk_queue_run.queued_count,
             "skipped": bulk_queue_run.skipped_count,
             "errors": bulk_queue_run.error_count,
-            "completed_at": bulk_queue_run.completed_at
+            "completed_at": bulk_queue_run.completed_at,
+            "exchange_name": exchange_name
         }
     )
     
