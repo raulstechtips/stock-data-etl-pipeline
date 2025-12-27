@@ -55,6 +55,7 @@ class StockIngestionRunFilter(filters.FilterSet):
     - created_before: Filter runs created before a date
     - is_terminal: Filter terminal states (DONE/FAILED)
     - is_in_progress: Filter in-progress runs
+    - bulk_queue_run: Filter by BulkQueueRun UUID
     
     Example usage:
         ?ticker=AAPL                           # Runs for AAPL
@@ -65,7 +66,9 @@ class StockIngestionRunFilter(filters.FilterSet):
         ?created_before=2025-12-31             # Runs created before Dec 31, 2025
         ?is_terminal=true                      # Only terminal runs (DONE/FAILED)
         ?is_in_progress=true                   # Only in-progress runs
+        ?bulk_queue_run=550e8400-e29b-41d4-a716-446655440000  # Runs from specific bulk operation
         ?state=FAILED&created_after=2025-01-01 # Multiple filters combined
+        ?bulk_queue_run=<uuid>&state=FAILED    # Failed runs from a bulk operation
     """
     ticker = filters.CharFilter(field_name='stock__ticker', lookup_expr='iexact')
     ticker__icontains = filters.CharFilter(field_name='stock__ticker', lookup_expr='icontains')
@@ -76,6 +79,7 @@ class StockIngestionRunFilter(filters.FilterSet):
     created_before = filters.DateTimeFilter(field_name='created_at', lookup_expr='lte')
     is_terminal = filters.BooleanFilter(method='filter_is_terminal')
     is_in_progress = filters.BooleanFilter(method='filter_is_in_progress')
+    bulk_queue_run = filters.UUIDFilter(field_name='bulk_queue_run', lookup_expr='exact')
     
     class Meta:
         model = StockIngestionRun
