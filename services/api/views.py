@@ -26,8 +26,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.filters import StockFilter, StockIngestionRunFilter
-from api.models import IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
 from api.serializers import (
+    BulkQueueRunSerializer,
+    QueueAllStocksRequestSerializer,
     QueueForFetchRequestSerializer,
     StockIngestionRunSerializer,
     StockSerializer,
@@ -491,3 +493,123 @@ class RunDetailView(APIView):
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class QueueAllStocksForFetchView(APIView):
+    """
+    API endpoint for queuing all stocks for ingestion via background worker.
+    
+    POST /ticker/queue/all
+    
+    Creates a BulkQueueRun to track statistics and queues a background worker
+    task to process all stocks asynchronously. Returns immediately with task
+    information (202 Accepted).
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request: Request) -> Response:
+        """
+        Queue all stocks for fetching via background worker.
+        
+        Request body:
+            {
+                "requested_by": "admin@example.com"  // optional
+            }
+        
+        Returns:
+            - 202: Task queued successfully (asynchronous processing)
+            - 400: If the request is invalid
+            - 500: If failed to queue the task to message broker
+        """
+        serializer = QueueAllStocksRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            logger.warning(
+                "Queue all stocks validation failed",
+                extra={'errors': serializer.errors}
+            )
+            return Response(
+                {
+                    'error': {
+                        'message': 'Validation failed',
+                        'code': 'VALIDATION_ERROR',
+                        'details': serializer.errors
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        validated_data = serializer.validated_data
+        requested_by = validated_data.get('requested_by')
+        
+        # Get total stocks count
+        total_stocks = Stock.objects.count()
+        
+        # Create BulkQueueRun to track statistics
+        bulk_run = BulkQueueRun.objects.create(
+            requested_by=requested_by,
+            total_stocks=total_stocks,
+        )
+        
+        logger.info(
+            "Created BulkQueueRun for queue all stocks operation",
+            extra={
+                'bulk_queue_run_id': str(bulk_run.id),
+                'total_stocks': total_stocks,
+                'requested_by': requested_by
+            }
+        )
+        
+        # Queue the background worker task
+        try:
+            # Import here to avoid circular dependency
+            from workers.tasks import queue_all_stocks_for_fetch
+            
+            task_result = queue_all_stocks_for_fetch.delay(
+                bulk_queue_run_id=str(bulk_run.id)
+            )
+            
+            logger.info(
+                "Background worker task queued successfully for bulk queue operation",
+                extra={
+                    'bulk_queue_run_id': str(bulk_run.id),
+                    'task_id': task_result.id,
+                    'total_stocks': total_stocks,
+                    'requested_by': requested_by
+                }
+            )
+            
+            response_serializer = BulkQueueRunSerializer(bulk_run)
+            return Response(
+                {
+                    'bulk_queue_run': response_serializer.data,
+                    'task_id': task_result.id,
+                    'message': f'Bulk queue operation started. Processing {total_stocks} stocks asynchronously.'
+                },
+                status=status.HTTP_202_ACCEPTED
+            )
+            
+        except (CeleryError, CeleryOperationalError) as e:
+            logger.exception(
+                "Failed to queue background worker task for bulk queue operation",
+                extra={
+                    'bulk_queue_run_id': str(bulk_run.id),
+                    'total_stocks': total_stocks,
+                    'requested_by': requested_by
+                }
+            )
+            
+            return Response(
+                {
+                    'error': {
+                        'message': 'Failed to queue background worker task',
+                        'code': 'BROKER_ERROR',
+                        'details': {
+                            'bulk_queue_run_id': str(bulk_run.id),
+                            'error': str(e)
+                        }
+                    }
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+

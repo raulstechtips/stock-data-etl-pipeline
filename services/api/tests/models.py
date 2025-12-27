@@ -10,7 +10,7 @@ This file contains unit tests for:
 from django.test import TestCase
 from django.db import IntegrityError
 
-from api.models import IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
 
 
 class StockModelTest(TestCase):
@@ -282,3 +282,205 @@ class StockIngestionRunManagerTest(TestCase):
         
         self.assertEqual(active_runs.count(), 1)
         self.assertEqual(active_runs.first().id, active_run.id)
+
+
+class BulkQueueRunModelTest(TestCase):
+    """Tests for the BulkQueueRun model."""
+
+    def test_create_bulk_queue_run_with_defaults(self):
+        """Test creating a BulkQueueRun with default values."""
+        bulk_run = BulkQueueRun.objects.create(
+            total_stocks=100
+        )
+        
+        self.assertIsNotNone(bulk_run.id)
+        self.assertEqual(bulk_run.total_stocks, 100)
+        self.assertEqual(bulk_run.queued_count, 0)
+        self.assertEqual(bulk_run.skipped_count, 0)
+        self.assertEqual(bulk_run.error_count, 0)
+        self.assertIsNone(bulk_run.requested_by)
+        self.assertIsNotNone(bulk_run.created_at)
+        self.assertIsNone(bulk_run.started_at)
+        self.assertIsNone(bulk_run.completed_at)
+
+    def test_create_bulk_queue_run_with_requested_by(self):
+        """Test creating a BulkQueueRun with requested_by."""
+        bulk_run = BulkQueueRun.objects.create(
+            total_stocks=50,
+            requested_by='admin@example.com'
+        )
+        
+        self.assertEqual(bulk_run.requested_by, 'admin@example.com')
+        self.assertEqual(bulk_run.total_stocks, 50)
+
+    def test_bulk_queue_run_str_representation(self):
+        """Test the string representation of a BulkQueueRun."""
+        bulk_run = BulkQueueRun.objects.create(
+            total_stocks=100,
+            queued_count=75
+        )
+        str_repr = str(bulk_run)
+        
+        self.assertIn('75', str_repr)
+        self.assertIn('100', str_repr)
+        self.assertIn('queued', str_repr.lower())
+
+    def test_bulk_queue_run_repr(self):
+        """Test the repr of a BulkQueueRun."""
+        bulk_run = BulkQueueRun.objects.create(
+            total_stocks=100,
+            queued_count=75,
+            skipped_count=20,
+            error_count=5
+        )
+        repr_str = repr(bulk_run)
+        
+        self.assertIn('BulkQueueRun', repr_str)
+        self.assertIn('total=100', repr_str)
+        self.assertIn('queued=75', repr_str)
+        self.assertIn('skipped=20', repr_str)
+        self.assertIn('errors=5', repr_str)
+
+    def test_bulk_queue_run_update_statistics(self):
+        """Test updating BulkQueueRun statistics."""
+        bulk_run = BulkQueueRun.objects.create(
+            total_stocks=100
+        )
+        
+        # Update statistics
+        bulk_run.queued_count = 80
+        bulk_run.skipped_count = 15
+        bulk_run.error_count = 5
+        bulk_run.save()
+        
+        # Reload from database
+        bulk_run.refresh_from_db()
+        
+        self.assertEqual(bulk_run.queued_count, 80)
+        self.assertEqual(bulk_run.skipped_count, 15)
+        self.assertEqual(bulk_run.error_count, 5)
+
+
+class BulkQueueRunRelationshipTest(TestCase):
+    """Tests for the BulkQueueRun foreign key relationship with StockIngestionRun."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.stock = Stock.objects.create(ticker='AAPL')
+        self.bulk_run = BulkQueueRun.objects.create(
+            total_stocks=10,
+            requested_by='test@example.com'
+        )
+
+    def test_ingestion_run_without_bulk_queue_run(self):
+        """Test creating an ingestion run without linking to a bulk queue run."""
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        self.assertIsNone(run.bulk_queue_run)
+
+    def test_ingestion_run_with_bulk_queue_run(self):
+        """Test creating an ingestion run linked to a bulk queue run."""
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        self.assertEqual(run.bulk_queue_run, self.bulk_run)
+        self.assertEqual(run.bulk_queue_run.id, self.bulk_run.id)
+
+    def test_bulk_queue_run_reverse_relationship(self):
+        """Test accessing ingestion runs from a bulk queue run."""
+        # Create multiple ingestion runs linked to the bulk queue run
+        stock1 = self.stock  # Use the stock created in setUp
+        stock2 = Stock.objects.create(ticker='GOOGL')
+        stock3 = Stock.objects.create(ticker='MSFT')
+        
+        run1 = StockIngestionRun.objects.create(
+            stock=stock1,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=stock2,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.FETCHING
+        )
+        run3 = StockIngestionRun.objects.create(
+            stock=stock3,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.FAILED
+        )
+        
+        # Access runs through reverse relationship
+        related_runs = self.bulk_run.ingestion_runs.all()
+        
+        self.assertEqual(related_runs.count(), 3)
+        self.assertIn(run1, related_runs)
+        self.assertIn(run2, related_runs)
+        self.assertIn(run3, related_runs)
+
+    def test_bulk_queue_run_set_null_on_delete(self):
+        """Test that deleting a BulkQueueRun sets the FK to NULL (SET_NULL)."""
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        # Delete the bulk queue run
+        bulk_run_id = self.bulk_run.id
+        self.bulk_run.delete()
+        
+        # Reload the ingestion run
+        run.refresh_from_db()
+        
+        # The FK should be set to NULL
+        self.assertIsNone(run.bulk_queue_run)
+        self.assertEqual(run.stock, self.stock)
+
+    def test_query_failed_stocks_in_bulk_run(self):
+        """Test querying failed stocks using the bulk_queue_run foreign key."""
+        # Create multiple stocks with different states
+        stock1 = self.stock  # Use the stock created in setUp
+        stock2 = Stock.objects.create(ticker='GOOGL')
+        stock3 = Stock.objects.create(ticker='MSFT')
+        stock4 = Stock.objects.create(ticker='TSLA')
+        
+        # Create runs with different states
+        StockIngestionRun.objects.create(
+            stock=stock1,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.FAILED
+        )
+        StockIngestionRun.objects.create(
+            stock=stock2,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.DONE
+        )
+        StockIngestionRun.objects.create(
+            stock=stock3,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.FAILED
+        )
+        StockIngestionRun.objects.create(
+            stock=stock4,
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.FETCHING
+        )
+        
+        # Query failed stocks
+        failed_runs = StockIngestionRun.objects.filter(
+            bulk_queue_run=self.bulk_run,
+            state=IngestionState.FAILED
+        )
+        
+        self.assertEqual(failed_runs.count(), 2)
+        failed_tickers = [run.stock.ticker for run in failed_runs]
+        self.assertIn('AAPL', failed_tickers)
+        self.assertIn('MSFT', failed_tickers)
+        self.assertNotIn('GOOGL', failed_tickers)
+        self.assertNotIn('TSLA', failed_tickers)
