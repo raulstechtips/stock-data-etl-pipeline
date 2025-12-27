@@ -161,7 +161,8 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
             )
             
             # Step 4b: Link the run to the BulkQueueRun (batched for efficiency)
-            if run.bulk_queue_run_id != bulk_queue_run.id:
+            # Only link if not already assigned to any BulkQueueRun
+            if run.bulk_queue_run_id is None:
                 run.bulk_queue_run = bulk_queue_run
                 bulk_queue_run_updates_batch.append(run)
                 
