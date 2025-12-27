@@ -75,7 +75,7 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
     # Step 1: Retrieve the BulkQueueRun instance
     try:
         bulk_queue_run_uuid = uuid.UUID(bulk_queue_run_id)
-        bulk_queue_run = BulkQueueRun.objects.get(id=bulk_queue_run_uuid)
+        bulk_queue_run = BulkQueueRun.objects.select_for_update().get(id=bulk_queue_run_uuid)
     except (ValueError, BulkQueueRun.DoesNotExist) as e:
         logger.exception(
             "BulkQueueRun not found",
@@ -146,7 +146,7 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
                             "bulk_queue_run_id": bulk_queue_run_id
                         }
                     )
-                except Exception as queue_error:
+                except Exception:
                     # If we fail to queue the task, count it as an error
                     logger.exception(
                         "Failed to queue fetch_stock_data task",
