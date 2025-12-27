@@ -10,7 +10,119 @@ This file contains unit tests for:
 from django.test import TestCase
 from django.db import IntegrityError
 
-from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
+
+
+class ExchangeModelTest(TestCase):
+    """Tests for the Exchange model."""
+
+    def test_create_exchange(self):
+        """Test creating an exchange with valid data."""
+        exchange = Exchange.objects.create(name='NASDAQ')
+        
+        self.assertIsNotNone(exchange.id)
+        self.assertEqual(exchange.name, 'NASDAQ')
+        self.assertIsNotNone(exchange.created_at)
+        self.assertIsNotNone(exchange.updated_at)
+
+    def test_exchange_name_uniqueness(self):
+        """Test that exchange names must be unique."""
+        Exchange.objects.create(name='NASDAQ')
+        
+        with self.assertRaises(IntegrityError):
+            Exchange.objects.create(name='NASDAQ')
+
+    def test_exchange_name_normalization_to_uppercase(self):
+        """Test that exchange names are normalized to uppercase on save."""
+        # Create exchange with lowercase name
+        exchange = Exchange.objects.create(name='nasdaq')
+        
+        # Verify it's stored as uppercase
+        self.assertEqual(exchange.name, 'NASDAQ')
+        
+        # Verify it can be retrieved with uppercase
+        retrieved = Exchange.objects.get(name='NASDAQ')
+        self.assertEqual(retrieved.id, exchange.id)
+
+    def test_exchange_name_case_insensitive_uniqueness_uppercase(self):
+        """Test that creating with uppercase after lowercase raises IntegrityError."""
+        # Create exchange with lowercase
+        Exchange.objects.create(name='nasdaq')
+        
+        # Try to create with uppercase - should raise IntegrityError
+        with self.assertRaises(IntegrityError):
+            Exchange.objects.create(name='NASDAQ')
+
+    def test_exchange_name_case_insensitive_uniqueness_mixed_case(self):
+        """Test that creating with mixed case after lowercase raises IntegrityError."""
+        # Create exchange with lowercase
+        Exchange.objects.create(name='nasdaq')
+        
+        # Try to create with mixed case - should raise IntegrityError
+        with self.assertRaises(IntegrityError):
+            Exchange.objects.create(name='NasDaq')
+
+    def test_exchange_name_normalization_with_whitespace(self):
+        """Test that exchange names are stripped of whitespace."""
+        exchange = Exchange.objects.create(name='  nasdaq  ')
+        
+        # Verify it's stored as uppercase and trimmed
+        self.assertEqual(exchange.name, 'NASDAQ')
+
+    def test_exchange_str_representation(self):
+        """Test the string representation of an exchange."""
+        exchange = Exchange.objects.create(name='NYSE')
+        self.assertEqual(str(exchange), 'NYSE')
+
+    def test_exchange_repr(self):
+        """Test the repr of an exchange."""
+        exchange = Exchange.objects.create(name='NASDAQ')
+        self.assertIn('NASDAQ', repr(exchange))
+        self.assertIn('Exchange', repr(exchange))
+
+    def test_exchange_get_or_create_creates_new(self):
+        """Test that get_or_create creates a new exchange when it doesn't exist."""
+        exchange, created = Exchange.objects.get_or_create(name='NASDAQ')
+        
+        self.assertTrue(created)
+        self.assertEqual(exchange.name, 'NASDAQ')
+
+    def test_exchange_get_or_create_retrieves_existing(self):
+        """Test that get_or_create retrieves existing exchange."""
+        # Create exchange first
+        existing_exchange = Exchange.objects.create(name='NASDAQ')
+        
+        # Try to get_or_create with same name
+        exchange, created = Exchange.objects.get_or_create(name='NASDAQ')
+        
+        self.assertFalse(created)
+        self.assertEqual(exchange.id, existing_exchange.id)
+        self.assertEqual(exchange.name, 'NASDAQ')
+
+    def test_exchange_get_or_create_with_normalization(self):
+        """Test that get_or_create works when name is normalized before calling it."""
+        # Create exchange with uppercase
+        existing_exchange = Exchange.objects.create(name='NASDAQ')
+        
+        # Normalize the name before calling get_or_create (this is the recommended pattern)
+        normalized_name = 'nasdaq'.strip().upper()
+        exchange, created = Exchange.objects.get_or_create(name=normalized_name)
+        
+        self.assertFalse(created)
+        self.assertEqual(exchange.id, existing_exchange.id)
+        self.assertEqual(exchange.name, 'NASDAQ')
+
+    def test_exchange_ordering(self):
+        """Test that exchanges are ordered by name."""
+        Exchange.objects.create(name='NYSE')
+        Exchange.objects.create(name='NASDAQ')
+        Exchange.objects.create(name='AMEX')
+        
+        exchanges = list(Exchange.objects.all())
+        
+        self.assertEqual(exchanges[0].name, 'AMEX')
+        self.assertEqual(exchanges[1].name, 'NASDAQ')
+        self.assertEqual(exchanges[2].name, 'NYSE')
 
 
 class StockModelTest(TestCase):
@@ -78,6 +190,123 @@ class StockModelTest(TestCase):
         """Test the repr of a stock."""
         stock = Stock.objects.create(ticker='MSFT')
         self.assertIn('MSFT', repr(stock))
+
+
+class StockExchangeForeignKeyTest(TestCase):
+    """Tests for the Stock.exchange ForeignKey relationship."""
+
+    def test_stock_exchange_can_be_null(self):
+        """Test that stock.exchange can be null."""
+        stock = Stock.objects.create(ticker='AAPL')
+        
+        self.assertIsNone(stock.exchange)
+
+    def test_stock_exchange_can_be_set(self):
+        """Test that stock.exchange ForeignKey can be set to an Exchange."""
+        exchange = Exchange.objects.create(name='NASDAQ')
+        stock = Stock.objects.create(ticker='AAPL', exchange=exchange)
+        
+        self.assertEqual(stock.exchange, exchange)
+        self.assertEqual(stock.exchange.name, 'NASDAQ')
+
+    def test_stock_exchange_can_be_retrieved(self):
+        """Test that stock.exchange ForeignKey can be retrieved."""
+        exchange = Exchange.objects.create(name='NYSE')
+        stock = Stock.objects.create(ticker='IBM', exchange=exchange)
+        
+        # Retrieve stock from database
+        retrieved_stock = Stock.objects.get(ticker='IBM')
+        
+        self.assertEqual(retrieved_stock.exchange, exchange)
+        self.assertEqual(retrieved_stock.exchange.name, 'NYSE')
+
+    def test_exchange_deletion_sets_stock_exchange_to_none(self):
+        """Test that deleting an Exchange sets Stock.exchange to None (SET_NULL behavior)."""
+        exchange = Exchange.objects.create(name='NASDAQ')
+        stock = Stock.objects.create(ticker='AAPL', exchange=exchange)
+        
+        # Verify exchange is set
+        self.assertEqual(stock.exchange, exchange)
+        
+        # Delete the exchange
+        exchange.delete()
+        
+        # Reload stock from database
+        stock.refresh_from_db()
+        
+        # Verify exchange is now None
+        self.assertIsNone(stock.exchange)
+
+    def test_filter_stocks_by_exchange(self):
+        """Test filtering stocks by exchange using ForeignKey."""
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        # Create stocks with different exchanges
+        aapl = Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        googl = Stock.objects.create(ticker='GOOGL', exchange=nasdaq)
+        ibm = Stock.objects.create(ticker='IBM', exchange=nyse)
+        tsla = Stock.objects.create(ticker='TSLA')  # No exchange
+        
+        # Filter stocks by NASDAQ
+        nasdaq_stocks = Stock.objects.filter(exchange=nasdaq)
+        
+        self.assertEqual(nasdaq_stocks.count(), 2)
+        self.assertIn(aapl, nasdaq_stocks)
+        self.assertIn(googl, nasdaq_stocks)
+        self.assertNotIn(ibm, nasdaq_stocks)
+        self.assertNotIn(tsla, nasdaq_stocks)
+
+    def test_filter_stocks_by_exchange_name(self):
+        """Test filtering stocks by exchange name using ForeignKey relationship."""
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        Stock.objects.create(ticker='GOOGL', exchange=nasdaq)
+        Stock.objects.create(ticker='IBM', exchange=nyse)
+        
+        # Filter stocks by exchange name
+        nasdaq_stocks = Stock.objects.filter(exchange__name='NASDAQ')
+        
+        self.assertEqual(nasdaq_stocks.count(), 2)
+        nasdaq_tickers = [stock.ticker for stock in nasdaq_stocks]
+        self.assertIn('AAPL', nasdaq_tickers)
+        self.assertIn('GOOGL', nasdaq_tickers)
+        self.assertNotIn('IBM', nasdaq_tickers)
+
+    def test_exchange_reverse_relationship(self):
+        """Test accessing stocks from an exchange using reverse relationship."""
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        
+        aapl = Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        googl = Stock.objects.create(ticker='GOOGL', exchange=nasdaq)
+        
+        # Access stocks through reverse relationship
+        nasdaq_stocks = nasdaq.stocks.all()
+        
+        self.assertEqual(nasdaq_stocks.count(), 2)
+        self.assertIn(aapl, nasdaq_stocks)
+        self.assertIn(googl, nasdaq_stocks)
+
+    def test_stock_exchange_update(self):
+        """Test updating stock.exchange ForeignKey."""
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        stock = Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        
+        # Verify initial exchange
+        self.assertEqual(stock.exchange, nasdaq)
+        
+        # Update exchange
+        stock.exchange = nyse
+        stock.save()
+        
+        # Reload and verify
+        stock.refresh_from_db()
+        self.assertEqual(stock.exchange, nyse)
+        self.assertEqual(stock.exchange.name, 'NYSE')
 
 
 class StockIngestionRunModelTest(TestCase):

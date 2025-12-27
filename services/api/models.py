@@ -33,6 +33,49 @@ class IngestionState(models.TextChoices):
     FAILED = 'FAILED', 'Failed'
 
 
+class Exchange(models.Model):
+    """
+    Represents a stock exchange where stocks are traded.
+    
+    This model stores exchange information with normalized names to ensure
+    consistency. Exchange names are automatically normalized to uppercase
+    and trimmed of whitespace on save, preventing duplicate entries like
+    'nasdaq' and 'NASDAQ'.
+    
+    Attributes:
+        id: UUID primary key
+        name: Unique exchange name (e.g., 'NASDAQ', 'NYSE')
+            Automatically normalized to uppercase on save.
+        created_at: Timestamp when the exchange was first added
+        updated_at: Timestamp when the exchange was last modified
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=50, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'exchanges'
+        ordering = ['name']
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to normalize exchange name to uppercase before saving.
+        
+        This ensures consistent storage regardless of input case,
+        preventing duplicate entries like 'nasdaq' and 'NASDAQ'.
+        """
+        if self.name:
+            self.name = self.name.strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return f"<Exchange(id={self.id}, name='{self.name}')>"
+
+
 class Stock(models.Model):
     """
     Represents a stock ticker symbol.
@@ -52,7 +95,7 @@ class Stock(models.Model):
         updated_at: Timestamp when the stock was last modified
         sector: Industry sector classification (e.g., 'Information Technology')
         name: Company name
-        exchange: Stock exchange where traded (e.g., 'NASDAQ')
+        exchange: ForeignKey to Exchange model representing where the stock is traded
         country: Country code where company is based (e.g., 'US')
         subindustry: Sub-industry classification
         morningstar_sector: Morningstar sector classification
@@ -68,7 +111,14 @@ class Stock(models.Model):
     # Metadata fields from Delta Lake
     sector = models.CharField(max_length=255, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
-    exchange = models.CharField(max_length=50, null=True, blank=True)
+    exchange = models.ForeignKey(
+        Exchange,
+        on_delete=models.SET_NULL,
+        related_name='stocks',
+        null=True,
+        blank=True,
+        db_index=True
+    )
     country = models.CharField(max_length=10, null=True, blank=True)
     subindustry = models.CharField(max_length=255, null=True, blank=True)
     morningstar_sector = models.CharField(max_length=255, null=True, blank=True)

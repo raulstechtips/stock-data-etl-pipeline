@@ -8,6 +8,7 @@ This module contains comprehensive tests for:
 """
 
 from .models import (
+    ExchangeModelTest,
     StockModelTest, 
     StockIngestionRunModelTest, 
     StockIngestionRunManagerTest,
@@ -33,6 +34,7 @@ from .filters import (
 )
 
 __all__ = [
+    'ExchangeModelTest',
     'StockModelTest',
     'StockIngestionRunModelTest',
     'StockIngestionRunManagerTest',
