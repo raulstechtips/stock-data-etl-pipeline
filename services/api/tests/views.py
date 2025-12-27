@@ -17,7 +17,7 @@ from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
 
 
 class StockStatusAPITest(APITestCase):
@@ -546,3 +546,185 @@ class TickerRunsListAPITest(APITestCase):
         self.assertIn('next', response.data)
         # Default page size is 50
         self.assertEqual(len(response.data['results']), 50)
+
+
+class QueueAllStocksForFetchAPITest(APITestCase):
+    """Tests for the POST /api/ticker/queue/all endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.url = reverse('api:queue-all-stocks-for-fetch')
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_success(self, mock_delay):
+        """Test successfully queuing all stocks creates BulkQueueRun and triggers task."""
+        # Create some stocks
+        Stock.objects.create(ticker='AAPL')
+        Stock.objects.create(ticker='GOOGL')
+        Stock.objects.create(ticker='MSFT')
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'bulk-task-123'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {'requested_by': 'admin@example.com'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertIn('bulk_queue_run', response.data)
+        self.assertIn('task_id', response.data)
+        self.assertIn('message', response.data)
+        self.assertEqual(response.data['task_id'], 'bulk-task-123')
+        
+        # Verify BulkQueueRun was created
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 3)
+        self.assertEqual(bulk_run.requested_by, 'admin@example.com')
+        self.assertEqual(bulk_run.queued_count, 0)  # Not yet processed
+        self.assertEqual(bulk_run.skipped_count, 0)
+        self.assertEqual(bulk_run.error_count, 0)
+        
+        # Verify Celery task was called with bulk_queue_run_id
+        mock_delay.assert_called_once()
+        call_args = mock_delay.call_args
+        self.assertEqual(call_args[1]['bulk_queue_run_id'], str(bulk_run.id))
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_empty_database(self, mock_delay):
+        """Test queuing all stocks when database is empty."""
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'bulk-task-456'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify BulkQueueRun was created with total_stocks=0
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 0)
+        self.assertIsNone(bulk_run.requested_by)
+        
+        # Verify task was still queued
+        mock_delay.assert_called_once()
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_without_requested_by(self, mock_delay):
+        """Test queuing all stocks without requested_by parameter."""
+        Stock.objects.create(ticker='AAPL')
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'bulk-task-789'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify BulkQueueRun was created without requested_by
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertIsNone(bulk_run.requested_by)
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_broker_error(self, mock_delay):
+        """Test that broker errors return 500 Internal Server Error."""
+        Stock.objects.create(ticker='AAPL')
+        
+        # Mock Celery broker error
+        mock_delay.side_effect = CeleryOperationalError("Connection to broker failed")
+        
+        response = self.client.post(
+            self.url,
+            {'requested_by': 'admin@example.com'},
+            format='json'
+        )
+        
+        # Should return 500 error
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'BROKER_ERROR')
+        self.assertIn('details', response.data['error'])
+        self.assertIn('bulk_queue_run_id', response.data['error']['details'])
+        
+        # Verify BulkQueueRun was still created
+        bulk_run_id = response.data['error']['details']['bulk_queue_run_id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 1)
+
+    def test_queue_all_stocks_invalid_request_body(self):
+        """Test that invalid request body returns 400 Bad Request."""
+        # Send invalid data (requested_by exceeds max_length would be caught by serializer)
+        # For this test, we'll send a data type that's invalid
+        response = self.client.post(
+            self.url,
+            {'requested_by': ['invalid', 'list']},  # Should be string, not list
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertIn('message', response.data['error'])
+        self.assertIn('code', response.data['error'])
+        self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
+        self.assertIn('details', response.data['error'])
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_response_format(self, mock_delay):
+        """Test that response format is correct."""
+        Stock.objects.create(ticker='AAPL')
+        Stock.objects.create(ticker='GOOGL')
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-abc-123'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {'requested_by': 'test-user'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify response structure
+        self.assertIn('bulk_queue_run', response.data)
+        self.assertIn('task_id', response.data)
+        self.assertIn('message', response.data)
+        
+        # Verify bulk_queue_run structure
+        bulk_run = response.data['bulk_queue_run']
+        self.assertIn('id', bulk_run)
+        self.assertIn('requested_by', bulk_run)
+        self.assertIn('total_stocks', bulk_run)
+        self.assertIn('queued_count', bulk_run)
+        self.assertIn('skipped_count', bulk_run)
+        self.assertIn('error_count', bulk_run)
+        self.assertIn('created_at', bulk_run)
+        self.assertIn('started_at', bulk_run)
+        self.assertIn('completed_at', bulk_run)
+        
+        # Verify values
+        self.assertEqual(bulk_run['requested_by'], 'test-user')
+        self.assertEqual(bulk_run['total_stocks'], 2)
+        self.assertEqual(response.data['task_id'], 'task-abc-123')
+        self.assertIn('2 stocks', response.data['message'])
