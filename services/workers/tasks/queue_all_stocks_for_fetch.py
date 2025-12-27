@@ -20,6 +20,7 @@ the following steps:
 import logging
 import uuid
 from typing import TypedDict
+from django.db.models import F
 from django.utils import timezone
 
 from celery import shared_task
@@ -75,7 +76,7 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
     # Step 1: Retrieve the BulkQueueRun instance
     try:
         bulk_queue_run_uuid = uuid.UUID(bulk_queue_run_id)
-        bulk_queue_run = BulkQueueRun.objects.select_for_update().get(id=bulk_queue_run_uuid)
+        bulk_queue_run = BulkQueueRun.objects.get(id=bulk_queue_run_uuid)
     except (ValueError, BulkQueueRun.DoesNotExist) as e:
         logger.exception(
             "BulkQueueRun not found",
@@ -105,11 +106,6 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
         extra={"bulk_queue_run_id": bulk_queue_run_id, "total_stocks": total_stocks}
     )
     
-    # Initialize counters
-    queued_count = 0
-    skipped_count = 0
-    error_count = 0
-    
     # Initialize service for queueing stocks
     service = StockIngestionService()
     
@@ -133,7 +129,10 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
             
             # Step 4c & 4d: Update counters and queue task if new run created
             if created:
-                queued_count += 1
+                # Atomically increment queued_count in database
+                BulkQueueRun.objects.filter(id=bulk_queue_run.id).update(
+                    queued_count=F('queued_count') + 1
+                )
                 
                 # Queue the fetch_stock_data task
                 try:
@@ -147,7 +146,7 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
                         }
                     )
                 except Exception:
-                    # If we fail to queue the task, count it as an error
+                    # If we fail to queue the task, atomically decrement queued_count and increment error_count
                     logger.exception(
                         "Failed to queue fetch_stock_data task",
                         extra={
@@ -156,10 +155,15 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
                             "bulk_queue_run_id": bulk_queue_run_id
                         }
                     )
-                    queued_count -= 1  # Revert the increment
-                    error_count += 1
+                    BulkQueueRun.objects.filter(id=bulk_queue_run.id).update(
+                        queued_count=F('queued_count') - 1,
+                        error_count=F('error_count') + 1
+                    )
             else:
-                skipped_count += 1
+                # Atomically increment skipped_count in database
+                BulkQueueRun.objects.filter(id=bulk_queue_run.id).update(
+                    skipped_count=F('skipped_count') + 1
+                )
                 logger.debug(
                     "Skipped stock (active run exists)",
                     extra={
@@ -172,7 +176,10 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
         
         except Exception as e:
             # Step 4e: Handle errors for individual stocks
-            error_count += 1
+            # Atomically increment error_count in database
+            BulkQueueRun.objects.filter(id=bulk_queue_run.id).update(
+                error_count=F('error_count') + 1
+            )
             logger.error(
                 "Error processing stock in bulk queue",
                 extra={
@@ -187,41 +194,35 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
         
         # Step 5: Log progress at appropriate intervals (every 100 stocks)
         if index % 100 == 0:
+            # Refresh from database to get current counter values for logging
+            bulk_queue_run.refresh_from_db()
             logger.info(
                 "Bulk queue progress",
                 extra={
                     "bulk_queue_run_id": bulk_queue_run_id,
                     "processed": index,
                     "total_stocks": total_stocks,
-                    "queued": queued_count,
-                    "skipped": skipped_count,
-                    "errors": error_count
+                    "queued": bulk_queue_run.queued_count,
+                    "skipped": bulk_queue_run.skipped_count,
+                    "errors": bulk_queue_run.error_count
                 }
             )
-            
-            # Update statistics in database periodically
-            # Use update() to avoid race conditions with multiple fields
-            BulkQueueRun.objects.filter(id=bulk_queue_run.id).update(
-                queued_count=queued_count,
-                skipped_count=skipped_count,
-                error_count=error_count
-            )
     
-    # Step 6: Update final statistics and completed_at
-    bulk_queue_run.queued_count = queued_count
-    bulk_queue_run.skipped_count = skipped_count
-    bulk_queue_run.error_count = error_count
+    # Step 6: Update completed_at and read final statistics from database
     bulk_queue_run.completed_at = timezone.now()
-    bulk_queue_run.save(update_fields=['queued_count', 'skipped_count', 'error_count', 'completed_at'])
+    bulk_queue_run.save(update_fields=['completed_at'])
+    
+    # Refresh from database to get final counter values
+    bulk_queue_run.refresh_from_db()
     
     logger.info(
         "Completed queue_all_stocks_for_fetch task",
         extra={
             "bulk_queue_run_id": bulk_queue_run_id,
             "total_stocks": total_stocks,
-            "queued": queued_count,
-            "skipped": skipped_count,
-            "errors": error_count,
+            "queued": bulk_queue_run.queued_count,
+            "skipped": bulk_queue_run.skipped_count,
+            "errors": bulk_queue_run.error_count,
             "completed_at": bulk_queue_run.completed_at
         }
     )
@@ -230,9 +231,9 @@ def queue_all_stocks_for_fetch(self, bulk_queue_run_id: str) -> QueueAllStocksFo
     return QueueAllStocksForFetchResult(
         bulk_queue_run_id=bulk_queue_run_id,
         total_stocks=total_stocks,
-        queued_count=queued_count,
-        skipped_count=skipped_count,
-        error_count=error_count,
+        queued_count=bulk_queue_run.queued_count,
+        skipped_count=bulk_queue_run.skipped_count,
+        error_count=bulk_queue_run.error_count,
         success=True
     )
 
