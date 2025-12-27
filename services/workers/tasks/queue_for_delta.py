@@ -454,6 +454,10 @@ def _transform_data_to_polars(data: Dict[str, Any], ticker: str) -> pl.DataFrame
         InvalidDataFormatError: If data structure is invalid
         ValueError: If data cannot be transformed
     """
+    # Define null string representations (common in financial data)
+    # Using frozenset for O(1) lookup performance
+    NULL_STRINGS = frozenset({"N/A", "NA", "NULL", "NONE", "-"})
+    
     all_records = []
     
     # Validate data structure
@@ -489,7 +493,14 @@ def _transform_data_to_polars(data: Dict[str, Any], ticker: str) -> pl.DataFrame
                         if metric_name != 'period_end_date' and metric_name != 'roic_5yr_avg':
                             # Handle case where array might be shorter than period_dates
                             if isinstance(metric_values, list) and idx < len(metric_values):
-                                record[metric_name] = metric_values[idx]
+                                value = metric_values[idx]
+                                # Normalize null strings to None during record building
+                                # This prevents Polars schema inference errors (O(1) hash lookup)
+                                if isinstance(value, str):
+                                    stripped = value.strip().upper()
+                                    record[metric_name] = None if stripped in NULL_STRINGS else value
+                                else:
+                                    record[metric_name] = value
                             else:
                                 record[metric_name] = None
                     
@@ -510,12 +521,20 @@ def _transform_data_to_polars(data: Dict[str, Any], ticker: str) -> pl.DataFrame
         
         if isinstance(metadata, dict) and len(metadata) > 0:
             # Add ticker, record_type, and null period_end_date for metadata
+            # Normalize null strings during record building
             metadata_record = {
                 'ticker': ticker,
                 'record_type': 'metadata',
                 'period_end_date': None,  # Metadata has no time dimension
-                **metadata
             }
+            
+            # Add metadata fields, normalizing null strings
+            for key, value in metadata.items():
+                if isinstance(value, str):
+                    stripped = value.strip().upper()
+                    metadata_record[key] = None if stripped in NULL_STRINGS else value
+                else:
+                    metadata_record[key] = value
             
             all_records.append(metadata_record)
             
@@ -559,7 +578,12 @@ def _transform_data_to_polars(data: Dict[str, Any], ticker: str) -> pl.DataFrame
                     if metric_name == 'period_end_date' and metric_value == "TTM":
                         ttm_record[metric_name] = latest_period_date
                     else:
-                        ttm_record[metric_name] = metric_value
+                        # Normalize null strings during record building
+                        if isinstance(metric_value, str):
+                            stripped = metric_value.strip().upper()
+                            ttm_record[metric_name] = None if stripped in NULL_STRINGS else metric_value
+                        else:
+                            ttm_record[metric_name] = metric_value
                 
                 all_records.append(ttm_record)
                 
@@ -576,10 +600,48 @@ def _transform_data_to_polars(data: Dict[str, Any], ticker: str) -> pl.DataFrame
         raise InvalidDataFormatError("No valid financial, metadata, or TTM data found in JSON")
     
     # Create unified DataFrame from all records
-    unified_df = pl.DataFrame(all_records)
+    # Null strings have been normalized to None during record building (Python preprocessing)
+    # This allows fast default schema inference without type conflicts
+    unified_df = pl.DataFrame(all_records)  # Uses default infer_schema_length=100 (fast)
+    
+    # Convert all integer numeric types to Float64 for consistency and decimal support
+    # This prevents type casting errors when merging with Delta Lake tables
+    # Float64 has sufficient precision (53 bits) for all financial metrics
+    key_columns = {'ticker', 'record_type', 'period_end_date'}
+    schema = unified_df.schema
+    
+    # Build type coercion expressions - convert all integer types to Float64
+    # Also handle Null columns (all-null columns from normalized "N/A" strings)
+    type_coercions = []
+    for col in unified_df.columns:
+        if col in key_columns:
+            # Keep key columns as-is
+            type_coercions.append(pl.col(col))
+        else:
+            col_dtype = schema[col]
+            # Convert all integer types to Float64 for consistency and decimal support
+            # This handles cases where some values are integers and others are decimals
+            if col_dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8):
+                type_coercions.append(
+                    pl.col(col).cast(pl.Float64, strict=False).alias(col)
+                )
+            elif col_dtype == pl.Null:
+                # Handle all-null columns (Delta Lake doesn't support Null type)
+                # Cast to String for safety - metadata fields may be null initially but
+                # have string values in subsequent batches. String type prevents type
+                # mismatch errors during Delta Lake merges (e.g., cusip, sector fields)
+                type_coercions.append(
+                    pl.col(col).cast(pl.Utf8, strict=False).alias(col)
+                )
+            else:
+                # Keep other types (strings, booleans, etc.) as-is
+                type_coercions.append(pl.col(col))
+    
+    # Apply type coercions in a single vectorized operation
+    unified_df = unified_df.select(type_coercions)
     
     logger.info(
-        "Created unified DataFrame for stocks table",
+        "Created unified DataFrame for stocks table (nulls pre-normalized, numeric types cast to Float64, Null types cast to String)",
         extra={
             "ticker": ticker,
             "total_rows": len(unified_df),
