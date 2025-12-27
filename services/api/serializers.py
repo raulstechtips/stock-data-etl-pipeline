@@ -216,13 +216,20 @@ class QueueAllStocksRequestSerializer(serializers.Serializer):
     Serializer for validating queue-all-stocks requests.
     
     Used to validate the POST request body when queuing all
-    stocks for ingestion via bulk operation.
+    stocks for ingestion via bulk operation. Supports optional
+    exchange filtering to queue only stocks from a specific exchange.
     """
     requested_by = serializers.CharField(
         max_length=255,
         required=False,
         allow_blank=True,
         help_text="Identifier for the requesting entity"
+    )
+    exchange = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+        help_text="Exchange name to filter stocks by (e.g., 'NASDAQ', 'NYSE')"
     )
 
 

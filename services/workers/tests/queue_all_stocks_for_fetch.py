@@ -15,7 +15,7 @@ from unittest.mock import patch, call
 from django.test import TransactionTestCase
 from django.utils import timezone
 
-from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 from workers.exceptions import NonRetryableError
 from workers.tasks.queue_all_stocks_for_fetch import queue_all_stocks_for_fetch
 
@@ -358,3 +358,236 @@ class QueueAllStocksForFetchTaskTest(TransactionTestCase):
         # Verify tickers are in alphabetical order (AAPL, GOOGL, MSFT)
         tickers = [run.stock.ticker for run in runs]
         self.assertEqual(tickers, ['AAPL', 'GOOGL', 'MSFT'])
+    
+    def test_queue_all_stocks_with_exchange_filter(self, mock_fetch_delay):
+        """Test queuing all stocks with exchange_name parameter filters stocks correctly."""
+        # Create exchanges
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        # Update stocks with exchanges
+        self.stock1.exchange = nasdaq
+        self.stock1.save()
+        self.stock2.exchange = nasdaq
+        self.stock2.save()
+        self.stock3.exchange = nyse
+        self.stock3.save()
+        
+        # Execute task with exchange_name='NASDAQ'
+        result = queue_all_stocks_for_fetch(
+            str(self.bulk_queue_run.id),
+            exchange_name='NASDAQ'
+        )
+        
+        # Verify result
+        self.assertEqual(result['bulk_queue_run_id'], str(self.bulk_queue_run.id))
+        self.assertEqual(result['total_stocks'], 2)  # Only NASDAQ stocks
+        self.assertEqual(result['queued_count'], 2)
+        self.assertEqual(result['skipped_count'], 0)
+        self.assertEqual(result['error_count'], 0)
+        self.assertTrue(result['success'])
+        
+        # Verify BulkQueueRun was updated with filtered count
+        self.bulk_queue_run.refresh_from_db()
+        self.assertEqual(self.bulk_queue_run.total_stocks, 2)
+        self.assertEqual(self.bulk_queue_run.queued_count, 2)
+        
+        # Verify only NASDAQ stocks were queued
+        self.assertEqual(mock_fetch_delay.call_count, 2)
+        
+        # Verify StockIngestionRun instances were created only for NASDAQ stocks
+        runs = StockIngestionRun.objects.filter(bulk_queue_run=self.bulk_queue_run)
+        self.assertEqual(runs.count(), 2)
+        
+        # Verify the correct stocks were queued (AAPL and GOOGL, not MSFT)
+        queued_tickers = set(run.stock.ticker for run in runs)
+        self.assertEqual(queued_tickers, {'AAPL', 'GOOGL'})
+    
+    def test_queue_all_stocks_without_exchange_filter(self, mock_fetch_delay):
+        """Test queuing all stocks without exchange_name parameter processes all stocks."""
+        # Create exchanges
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        # Update stocks with exchanges
+        self.stock1.exchange = nasdaq
+        self.stock1.save()
+        self.stock2.exchange = nasdaq
+        self.stock2.save()
+        self.stock3.exchange = nyse
+        self.stock3.save()
+        
+        # Execute task without exchange_name (None)
+        result = queue_all_stocks_for_fetch(
+            str(self.bulk_queue_run.id),
+            exchange_name=None
+        )
+        
+        # Verify result includes all stocks
+        self.assertEqual(result['total_stocks'], 3)
+        self.assertEqual(result['queued_count'], 3)
+        
+        # Verify all stocks were queued
+        self.assertEqual(mock_fetch_delay.call_count, 3)
+        
+        # Verify StockIngestionRun instances were created for all stocks
+        runs = StockIngestionRun.objects.filter(bulk_queue_run=self.bulk_queue_run)
+        self.assertEqual(runs.count(), 3)
+    
+    def test_queue_all_stocks_with_non_existent_exchange(self, mock_fetch_delay):
+        """Test handling of non-existent exchange in worker task."""
+        # Execute task with non-existent exchange
+        result = queue_all_stocks_for_fetch(
+            str(self.bulk_queue_run.id),
+            exchange_name='NONEXISTENT'
+        )
+        
+        # Verify result shows failure
+        self.assertEqual(result['bulk_queue_run_id'], str(self.bulk_queue_run.id))
+        self.assertEqual(result['total_stocks'], 0)
+        self.assertEqual(result['queued_count'], 0)
+        self.assertEqual(result['skipped_count'], 0)
+        self.assertEqual(result['error_count'], 0)
+        self.assertFalse(result['success'])
+        
+        # Verify BulkQueueRun was updated
+        self.bulk_queue_run.refresh_from_db()
+        self.assertIsNotNone(self.bulk_queue_run.started_at)
+        self.assertIsNotNone(self.bulk_queue_run.completed_at)
+        
+        # Verify no stocks were queued
+        mock_fetch_delay.assert_not_called()
+        
+        # Verify no StockIngestionRun instances were created
+        runs = StockIngestionRun.objects.filter(bulk_queue_run=self.bulk_queue_run)
+        self.assertEqual(runs.count(), 0)
+    
+    def test_queue_all_stocks_exchange_name_normalization(self, mock_fetch_delay):
+        """Test that exchange name is normalized in worker task."""
+        # Create exchange with uppercase name
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        
+        # Update stocks with exchange
+        self.stock1.exchange = nasdaq
+        self.stock1.save()
+        self.stock2.exchange = nasdaq
+        self.stock2.save()
+        
+        # Execute task with lowercase and whitespace
+        result = queue_all_stocks_for_fetch(
+            str(self.bulk_queue_run.id),
+            exchange_name='  nasdaq  '
+        )
+        
+        # Verify stocks were filtered correctly (normalization worked)
+        self.assertEqual(result['total_stocks'], 2)
+        self.assertEqual(result['queued_count'], 2)
+        self.assertTrue(result['success'])
+        
+        # Verify correct stocks were queued
+        runs = StockIngestionRun.objects.filter(bulk_queue_run=self.bulk_queue_run)
+        self.assertEqual(runs.count(), 2)
+        queued_tickers = set(run.stock.ticker for run in runs)
+        self.assertEqual(queued_tickers, {'AAPL', 'GOOGL'})
+    
+    def test_queue_all_stocks_exchange_filter_with_skipped_runs(self, mock_fetch_delay):
+        """Test exchange filtering with some stocks already having active runs."""
+        # Create exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        # Update stocks with exchanges
+        self.stock1.exchange = nasdaq
+        self.stock1.save()
+        self.stock2.exchange = nasdaq
+        self.stock2.save()
+        self.stock3.exchange = nyse
+        self.stock3.save()
+        
+        # Create an existing active run for stock1 (AAPL, NASDAQ)
+        existing_run = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.FETCHING
+        )
+        
+        # Execute task with exchange_name='NASDAQ'
+        result = queue_all_stocks_for_fetch(
+            str(self.bulk_queue_run.id),
+            exchange_name='NASDAQ'
+        )
+        
+        # Verify result
+        self.assertEqual(result['total_stocks'], 2)  # AAPL and GOOGL
+        self.assertEqual(result['queued_count'], 1)  # Only GOOGL queued
+        self.assertEqual(result['skipped_count'], 1)  # AAPL skipped
+        self.assertEqual(result['error_count'], 0)
+        self.assertTrue(result['success'])
+        
+        # Verify only 1 new task was queued (for GOOGL)
+        self.assertEqual(mock_fetch_delay.call_count, 1)
+        
+        # Verify MSFT (NYSE) was not processed at all
+        msft_runs = StockIngestionRun.objects.filter(stock=self.stock3)
+        self.assertEqual(msft_runs.count(), 0)
+    
+    def test_queue_all_stocks_exchange_filter_empty_result(self, mock_fetch_delay):
+        """Test exchange filtering when no stocks belong to the exchange."""
+        # Create exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        # All stocks belong to NYSE
+        self.stock1.exchange = nyse
+        self.stock1.save()
+        self.stock2.exchange = nyse
+        self.stock2.save()
+        self.stock3.exchange = nyse
+        self.stock3.save()
+        
+        # Execute task with exchange_name='NASDAQ' (no stocks have this exchange)
+        result = queue_all_stocks_for_fetch(
+            str(self.bulk_queue_run.id),
+            exchange_name='NASDAQ'
+        )
+        
+        # Verify result shows 0 stocks
+        self.assertEqual(result['total_stocks'], 0)
+        self.assertEqual(result['queued_count'], 0)
+        self.assertEqual(result['skipped_count'], 0)
+        self.assertEqual(result['error_count'], 0)
+        self.assertTrue(result['success'])
+        
+        # Verify no tasks were queued
+        mock_fetch_delay.assert_not_called()
+        
+        # Verify BulkQueueRun reflects 0 stocks
+        self.bulk_queue_run.refresh_from_db()
+        self.assertEqual(self.bulk_queue_run.total_stocks, 0)
+    
+    def test_queue_all_stocks_exchange_filter_with_null_exchange_stocks(self, mock_fetch_delay):
+        """Test that stocks with null exchange are not included in exchange filter."""
+        # Create exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        
+        # Only stock1 has NASDAQ exchange, others have null
+        self.stock1.exchange = nasdaq
+        self.stock1.save()
+        # stock2 and stock3 have exchange=None
+        
+        # Execute task with exchange_name='NASDAQ'
+        result = queue_all_stocks_for_fetch(
+            str(self.bulk_queue_run.id),
+            exchange_name='NASDAQ'
+        )
+        
+        # Verify only stock1 was processed
+        self.assertEqual(result['total_stocks'], 1)
+        self.assertEqual(result['queued_count'], 1)
+        
+        # Verify only 1 task was queued
+        self.assertEqual(mock_fetch_delay.call_count, 1)
+        
+        # Verify only AAPL was queued
+        runs = StockIngestionRun.objects.filter(bulk_queue_run=self.bulk_queue_run)
+        self.assertEqual(runs.count(), 1)
+        self.assertEqual(runs.first().stock.ticker, 'AAPL')

@@ -17,7 +17,7 @@ from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 
 
 class StockStatusAPITest(APITestCase):
@@ -728,3 +728,244 @@ class QueueAllStocksForFetchAPITest(APITestCase):
         self.assertEqual(bulk_run['total_stocks'], 2)
         self.assertEqual(response.data['task_id'], 'task-abc-123')
         self.assertIn('2 stocks', response.data['message'])
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_with_exchange_filter(self, mock_delay):
+        """Test queuing all stocks with exchange parameter filters stocks correctly."""
+        # Create exchanges
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        # Create stocks with different exchanges
+        Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        Stock.objects.create(ticker='GOOGL', exchange=nasdaq)
+        Stock.objects.create(ticker='MSFT', exchange=nasdaq)
+        Stock.objects.create(ticker='IBM', exchange=nyse)
+        Stock.objects.create(ticker='GE', exchange=nyse)
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-exchange-123'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {'requested_by': 'admin@example.com', 'exchange': 'NASDAQ'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertIn('bulk_queue_run', response.data)
+        self.assertIn('task_id', response.data)
+        self.assertIn('message', response.data)
+        self.assertIn('exchange', response.data)
+        self.assertEqual(response.data['exchange'], 'NASDAQ')
+        
+        # Verify BulkQueueRun was created with filtered count
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 3)  # Only NASDAQ stocks
+        self.assertEqual(bulk_run.requested_by, 'admin@example.com')
+        
+        # Verify Celery task was called with exchange_name parameter
+        mock_delay.assert_called_once()
+        call_args = mock_delay.call_args
+        self.assertEqual(call_args[1]['bulk_queue_run_id'], str(bulk_run.id))
+        self.assertEqual(call_args[1]['exchange_name'], 'NASDAQ')
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_without_exchange_filter(self, mock_delay):
+        """Test queuing all stocks without exchange parameter queues all stocks."""
+        # Create exchanges
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        
+        # Create stocks with different exchanges
+        Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        Stock.objects.create(ticker='GOOGL', exchange=nasdaq)
+        Stock.objects.create(ticker='IBM', exchange=nyse)
+        Stock.objects.create(ticker='GE', exchange=nyse)
+        Stock.objects.create(ticker='TSLA')  # No exchange
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-all-123'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {'requested_by': 'admin@example.com'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify BulkQueueRun was created with all stocks count
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 5)  # All stocks
+        
+        # Verify Celery task was called with exchange_name=None
+        mock_delay.assert_called_once()
+        call_args = mock_delay.call_args
+        self.assertEqual(call_args[1]['bulk_queue_run_id'], str(bulk_run.id))
+        self.assertEqual(call_args[1]['exchange_name'], None)
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_with_non_existent_exchange_creates_it(self, mock_delay):
+        """Test queuing with non-existent exchange creates the Exchange."""
+        # Create some stocks without exchange
+        Stock.objects.create(ticker='AAPL')
+        Stock.objects.create(ticker='GOOGL')
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-new-exchange-123'
+        mock_delay.return_value = mock_task_result
+        
+        # Verify exchange doesn't exist yet
+        self.assertFalse(Exchange.objects.filter(name='NEWEXCHANGE').exists())
+        
+        response = self.client.post(
+            self.url,
+            {'requested_by': 'admin@example.com', 'exchange': 'NEWEXCHANGE'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify Exchange was created
+        self.assertTrue(Exchange.objects.filter(name='NEWEXCHANGE').exists())
+        exchange = Exchange.objects.get(name='NEWEXCHANGE')
+        
+        # Verify BulkQueueRun was created with 0 stocks (no stocks have this exchange yet)
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 0)
+        
+        # Verify task was called with normalized exchange_name
+        mock_delay.assert_called_once()
+        call_args = mock_delay.call_args
+        self.assertEqual(call_args[1]['exchange_name'], 'NEWEXCHANGE')
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_exchange_name_normalization(self, mock_delay):
+        """Test that exchange name is normalized (uppercase, strip whitespace)."""
+        # Create exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        
+        # Create stocks
+        Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        Stock.objects.create(ticker='GOOGL', exchange=nasdaq)
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-normalize-123'
+        mock_delay.return_value = mock_task_result
+        
+        # Test with lowercase and whitespace
+        response = self.client.post(
+            self.url,
+            {'requested_by': 'admin@example.com', 'exchange': '  nasdaq  '},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify normalized exchange_name was used
+        mock_delay.assert_called_once()
+        call_args = mock_delay.call_args
+        self.assertEqual(call_args[1]['exchange_name'], 'NASDAQ')
+        
+        # Verify BulkQueueRun reflects correct filtered count
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 2)
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_exchange_name_case_variations(self, mock_delay):
+        """Test exchange filtering with various case variations."""
+        # Create exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        
+        # Create stocks
+        Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-case-123'
+        mock_delay.return_value = mock_task_result
+        
+        # Test with mixed case
+        response = self.client.post(
+            self.url,
+            {'exchange': 'NasDaQ'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify normalized to uppercase
+        call_args = mock_delay.call_args
+        self.assertEqual(call_args[1]['exchange_name'], 'NASDAQ')
+        
+        # Verify correct count
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 1)
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_with_blank_exchange(self, mock_delay):
+        """Test that blank exchange parameter is treated as no filter."""
+        # Create stocks
+        Stock.objects.create(ticker='AAPL')
+        Stock.objects.create(ticker='GOOGL')
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-blank-123'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {'exchange': ''},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify all stocks are counted (blank exchange treated as no filter)
+        bulk_run_id = response.data['bulk_queue_run']['id']
+        bulk_run = BulkQueueRun.objects.get(id=bulk_run_id)
+        self.assertEqual(bulk_run.total_stocks, 2)
+        
+        # Verify exchange_name is None
+        call_args = mock_delay.call_args
+        self.assertIsNone(call_args[1]['exchange_name'])
+
+    @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
+    def test_queue_all_stocks_response_includes_exchange(self, mock_delay):
+        """Test that response includes exchange field when provided."""
+        # Create exchange and stocks
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        Stock.objects.create(ticker='AAPL', exchange=nasdaq)
+        
+        # Mock Celery task
+        mock_task_result = Mock()
+        mock_task_result.id = 'task-response-123'
+        mock_delay.return_value = mock_task_result
+        
+        response = self.client.post(
+            self.url,
+            {'exchange': 'NASDAQ'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        
+        # Verify response includes exchange
+        self.assertIn('exchange', response.data)
+        self.assertEqual(response.data['exchange'], 'NASDAQ')
+        
+        # Verify message mentions exchange
+        self.assertIn('NASDAQ', response.data['message'])
