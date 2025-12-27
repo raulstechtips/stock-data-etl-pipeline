@@ -16,6 +16,7 @@ from uuid import UUID
 
 from django.db import IntegrityError
 from celery.exceptions import CeleryError, OperationalError as CeleryOperationalError
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.pagination import CursorPagination
@@ -24,6 +25,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.filters import StockFilter, StockIngestionRunFilter
 from api.models import IngestionState, Stock, StockIngestionRun
 from api.serializers import (
     QueueForFetchRequestSerializer,
@@ -57,10 +59,13 @@ class TickerListView(ListAPIView):
     GET /tickers
     
     Returns a paginated list of all stocks with cursor-based pagination.
+    Supports filtering by ticker, sector, exchange, and country.
     """
     permission_classes = [AllowAny]
     serializer_class = StockSerializer
     pagination_class = StandardCursorPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = StockFilter
     queryset = Stock.objects.all().order_by('-created_at')
 
 
@@ -343,10 +348,13 @@ class RunListView(ListAPIView):
     GET /runs
     
     Returns a paginated list of all ingestion runs with cursor-based pagination.
+    Supports filtering by ticker, state, requested_by, date ranges, and terminal/in-progress status.
     """
     permission_classes = [AllowAny]
     serializer_class = StockIngestionRunSerializer
     pagination_class = StandardCursorPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = StockIngestionRunFilter
     queryset = StockIngestionRun.objects.select_related('stock').all().order_by('-created_at')
 
 
@@ -357,10 +365,13 @@ class TickerRunsListView(ListAPIView):
     GET /runs/ticker/<ticker>
     
     Returns a paginated list of runs for the specified ticker.
+    Supports additional filtering by state, requested_by, date ranges, and terminal/in-progress status.
     """
     permission_classes = [AllowAny]
     serializer_class = StockIngestionRunSerializer
     pagination_class = StandardCursorPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = StockIngestionRunFilter
 
     def get_queryset(self):
         """Get runs filtered by ticker from URL parameter."""

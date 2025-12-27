@@ -18,6 +18,7 @@ from .views import (
     RunListAPITest,
     TickerRunsListAPITest,
 )
+from .filters import TickerListFilterAPITest, RunListFilterAPITest, TickerRunsListFilterAPITest
 
 __all__ = [
     'StockModelTest',
@@ -33,4 +34,7 @@ __all__ = [
     'TickerDetailAPITest',
     'RunListAPITest',
     'TickerRunsListAPITest',
+    'TickerListFilterAPITest',
+    'RunListFilterAPITest',
+    'TickerRunsListFilterAPITest',
 ]
