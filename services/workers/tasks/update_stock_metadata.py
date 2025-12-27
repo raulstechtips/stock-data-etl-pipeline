@@ -24,7 +24,7 @@ from django.conf import settings
 from django.db import DatabaseError, transaction
 from django.db.utils import OperationalError
 
-from api.models import Stock
+from api.models import Exchange, Stock
 from api.services.stock_ingestion_service import StockNotFoundError
 from workers.exceptions import (
     DeltaLakeReadError,
@@ -301,6 +301,12 @@ def _update_stock_with_metadata(
     task is updating the same Stock), an OperationalError will be raised which
     should be caught and converted to RetryableError by the caller.
     
+    For the 'exchange' field, this function:
+    1. Extracts the exchange name from metadata_dict
+    2. Normalizes it (strip and uppercase)
+    3. Uses Exchange.objects.get_or_create() to get or create the Exchange
+    4. Sets stock.exchange to the Exchange instance (ForeignKey)
+    
     Args:
         stock_id: UUID of the Stock to update
         metadata_dict: Dictionary of metadata fields to update
@@ -321,7 +327,31 @@ def _update_stock_with_metadata(
         
         # Update fields that are present in metadata_dict
         for field_name, value in metadata_dict.items():
-            if hasattr(stock, field_name):
+            # Special handling for exchange field (ForeignKey to Exchange model)
+            if field_name == 'exchange' and value:
+                # Normalize exchange name (strip and uppercase)
+                normalized_exchange_name = value.strip().upper()
+                
+                # Get or create Exchange instance
+                # get_or_create is atomic and handles race conditions
+                exchange, created = Exchange.objects.get_or_create(
+                    name=normalized_exchange_name
+                )
+                
+                logger.info(
+                    "Exchange get_or_create completed",
+                    extra={
+                        "exchange_name": normalized_exchange_name,
+                        "exchange_id": str(exchange.id),
+                        "exchange_created": created,
+                        "stock_id": str(stock_id)
+                    }
+                )
+                
+                # Set the ForeignKey
+                stock.exchange = exchange
+                fields_updated.append(field_name)
+            elif hasattr(stock, field_name):
                 setattr(stock, field_name, value)
                 fields_updated.append(field_name)
             else:

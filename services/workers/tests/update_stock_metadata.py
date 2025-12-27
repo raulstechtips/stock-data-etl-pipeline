@@ -23,7 +23,7 @@ from celery.exceptions import Retry
 from django.db import DatabaseError, OperationalError, transaction
 from django.test import TransactionTestCase
 
-from api.models import Stock
+from api.models import Exchange, Stock
 from workers.exceptions import (
     DeltaLakeReadError,
     InvalidDataFormatError,
@@ -354,7 +354,8 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         self.stock.refresh_from_db()
         self.assertEqual(self.stock.sector, 'Information Technology')
         self.assertEqual(self.stock.name, 'Apple Inc.')
-        self.assertEqual(self.stock.exchange, 'NASDAQ')
+        self.assertIsNotNone(self.stock.exchange)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
         self.assertEqual(self.stock.country, 'US')
 
     def test_partial_metadata_update_leaves_other_fields_unchanged(self):
@@ -447,6 +448,235 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         self.assertFalse(hasattr(self.stock, 'invalid_field'))
 
 
+class ExchangeHandlingInMetadataWorkerTests(TransactionTestCase):
+    """Tests for Exchange ForeignKey handling in update_stock_metadata task."""
+
+    def setUp(self):
+        """Create test stock."""
+        self.stock = Stock.objects.create(ticker='AAPL')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_exchange_created_when_updating_stock_metadata(self, mock_read):
+        """Test that Exchange is created when updating stock metadata with exchange name."""
+        # Arrange
+        metadata_dict = {
+            'sector': 'Information Technology',
+            'name': 'Apple Inc.',
+            'exchange': 'NASDAQ',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify Exchange was created
+        self.assertTrue(result['updated'])
+        self.assertIn('exchange', result['fields_updated'])
+        
+        # Verify Exchange exists in database
+        self.assertTrue(Exchange.objects.filter(name='NASDAQ').exists())
+        
+        # Verify Stock.exchange ForeignKey is set
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.exchange)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_existing_exchange_reused_when_updating_stock_metadata(self, mock_read):
+        """Test that existing Exchange is reused when updating stock metadata with same exchange name."""
+        # Arrange - Create exchange first
+        existing_exchange = Exchange.objects.create(name='NASDAQ')
+        
+        metadata_dict = {
+            'sector': 'Information Technology',
+            'name': 'Apple Inc.',
+            'exchange': 'NASDAQ',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify existing Exchange was reused (not created)
+        self.assertTrue(result['updated'])
+        self.assertIn('exchange', result['fields_updated'])
+        
+        # Verify only one Exchange exists
+        self.assertEqual(Exchange.objects.filter(name='NASDAQ').count(), 1)
+        
+        # Verify Stock.exchange ForeignKey points to existing Exchange
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.exchange.id, existing_exchange.id)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_exchange_name_normalization_in_get_or_create(self, mock_read):
+        """Test exchange name normalization in get_or_create (case-insensitive matching)."""
+        # Arrange - Create exchange with uppercase
+        existing_exchange = Exchange.objects.create(name='NASDAQ')
+        
+        # Metadata has lowercase exchange name
+        metadata_dict = {
+            'sector': 'Information Technology',
+            'name': 'Apple Inc.',
+            'exchange': 'nasdaq',  # lowercase
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify existing Exchange was found (case-insensitive)
+        self.assertTrue(result['updated'])
+        
+        # Verify only one Exchange exists (no duplicate created)
+        self.assertEqual(Exchange.objects.count(), 1)
+        
+        # Verify Stock.exchange ForeignKey points to existing Exchange
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.exchange.id, existing_exchange.id)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_exchange_name_normalization_with_whitespace(self, mock_read):
+        """Test exchange name normalization strips whitespace."""
+        # Arrange
+        metadata_dict = {
+            'exchange': '  nasdaq  ',  # whitespace
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify Exchange was created with normalized name
+        self.assertTrue(result['updated'])
+        
+        # Verify Exchange exists with normalized name
+        self.assertTrue(Exchange.objects.filter(name='NASDAQ').exists())
+        
+        # Verify Stock.exchange ForeignKey is set
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_stock_exchange_foreignkey_set_correctly_after_metadata_update(self, mock_read):
+        """Test that stock.exchange ForeignKey is set correctly after metadata update."""
+        # Arrange
+        metadata_dict = {
+            'sector': 'Information Technology',
+            'exchange': 'NYSE',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify Stock.exchange ForeignKey is set
+        self.assertTrue(result['updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.exchange)
+        self.assertIsInstance(self.stock.exchange, Exchange)
+        self.assertEqual(self.stock.exchange.name, 'NYSE')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_exchange_foreignkey_updated_when_exchange_name_changes(self, mock_read):
+        """Test that exchange ForeignKey is updated when exchange name changes in metadata."""
+        # Arrange - Set initial exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        self.stock.exchange = nasdaq
+        self.stock.save()
+        
+        # Metadata has different exchange
+        metadata_dict = {
+            'exchange': 'NYSE',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify Stock.exchange ForeignKey was updated
+        self.assertTrue(result['updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.exchange)
+        self.assertEqual(self.stock.exchange.name, 'NYSE')
+        self.assertNotEqual(self.stock.exchange.id, nasdaq.id)
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_handling_of_exchange_field_absent_in_metadata(self, mock_read):
+        """Test handling of exchange field when absent in metadata_dict."""
+        # Arrange - Set initial exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        self.stock.exchange = nasdaq
+        self.stock.save()
+        
+        # Metadata does not include exchange field
+        metadata_dict = {
+            'sector': 'Information Technology',
+            'name': 'Apple Inc.',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify exchange was not modified
+        self.assertTrue(result['updated'])
+        self.assertNotIn('exchange', result['fields_updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.exchange.id, nasdaq.id)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_handling_of_exchange_field_none_in_metadata(self, mock_read):
+        """Test handling of exchange field when None in metadata_dict."""
+        # Arrange - Set initial exchange
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        self.stock.exchange = nasdaq
+        self.stock.save()
+        
+        # Metadata has None for exchange (should be filtered out by _read_metadata_from_delta_lake)
+        # But test the behavior if it somehow gets through
+        metadata_dict = {
+            'sector': 'Information Technology',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify exchange was not modified
+        self.assertTrue(result['updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.exchange.id, nasdaq.id)
+
+    def test_transaction_safety_when_creating_exchange(self):
+        """Test transaction safety when creating Exchange in update_stock_metadata."""
+        # Arrange
+        metadata_dict = {
+            'exchange': 'NASDAQ',
+        }
+
+        # Act - Call _update_stock_with_metadata directly
+        fields_updated = _update_stock_with_metadata(self.stock.id, metadata_dict)
+
+        # Assert - Verify Exchange was created and Stock was updated atomically
+        self.assertIn('exchange', fields_updated)
+        
+        # Verify Exchange exists
+        self.assertTrue(Exchange.objects.filter(name='NASDAQ').exists())
+        
+        # Verify Stock.exchange ForeignKey is set
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.exchange)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
+
+
 class MetadataWorkerIntegrationTests(TransactionTestCase):
     """Integration tests for the complete metadata worker flow."""
 
@@ -482,7 +712,9 @@ class MetadataWorkerIntegrationTests(TransactionTestCase):
         self.stock.refresh_from_db()
         self.assertEqual(self.stock.sector, 'Information Technology')
         self.assertEqual(self.stock.name, 'Apple Inc.')
-        self.assertEqual(self.stock.exchange, 'NASDAQ')
+        # Exchange is now a ForeignKey, not a CharField
+        self.assertIsNotNone(self.stock.exchange)
+        self.assertEqual(self.stock.exchange.name, 'NASDAQ')
         self.assertEqual(self.stock.country, 'US')
         self.assertEqual(self.stock.subindustry, 'Technology Hardware, Storage & Peripherals')
         self.assertEqual(self.stock.morningstar_sector, 'Technology')

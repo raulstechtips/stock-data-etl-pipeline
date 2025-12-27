@@ -7,7 +7,26 @@ serializing output for the stock ingestion API endpoints.
 
 from rest_framework import serializers
 
-from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
+
+
+class ExchangeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Exchange model.
+    
+    Used for listing and retrieving exchange information. All fields
+    except 'name' are read-only as they are managed by the system.
+    """
+
+    class Meta:
+        model = Exchange
+        fields = [
+            'id',
+            'name',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class StockSerializer(serializers.ModelSerializer):
@@ -15,8 +34,11 @@ class StockSerializer(serializers.ModelSerializer):
     Serializer for the Stock model.
     
     Used for listing and retrieving stock information including metadata
-    fields populated from Delta Lake.
+    fields populated from Delta Lake. The exchange field is a ForeignKey
+    to the Exchange model, but for backward compatibility we provide both
+    the exchange ID and exchange_name as separate fields.
     """
+    exchange_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Stock
@@ -28,6 +50,7 @@ class StockSerializer(serializers.ModelSerializer):
             'sector',
             'name',
             'exchange',
+            'exchange_name',
             'country',
             'subindustry',
             'morningstar_sector',
@@ -35,7 +58,16 @@ class StockSerializer(serializers.ModelSerializer):
             'industry',
             'description',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'exchange', 'exchange_name']
+
+    def get_exchange_name(self, obj: Stock) -> str | None:
+        """
+        Get the exchange name from the related Exchange model.
+        
+        Returns None if no exchange is associated with the stock.
+        This maintains backward compatibility with the previous CharField implementation.
+        """
+        return obj.exchange.name if obj.exchange else None
 
 
 class StockIngestionRunSerializer(serializers.ModelSerializer):

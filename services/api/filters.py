@@ -18,7 +18,7 @@ class StockFilter(filters.FilterSet):
     Provides filtering capabilities for stock ticker list views:
     - ticker: Exact match or contains (case-insensitive)
     - sector: Exact match or contains (case-insensitive)
-    - exchange: Exact match
+    - exchange__name: Exact match by exchange name (case-insensitive)
     - country: Exact match
     
     Example usage:
@@ -26,13 +26,13 @@ class StockFilter(filters.FilterSet):
         ?ticker__icontains=app          # Contains 'app' (case-insensitive)
         ?sector=Technology              # Exact sector match (case-insensitive)
         ?sector__icontains=tech         # Sector contains 'tech'
-        ?exchange=NASDAQ                # Exact exchange match (case-insensitive)
+        ?exchange__name=NASDAQ          # Exact exchange name match (case-insensitive)
         ?country=US                     # Exact country match (case-insensitive)
         ?sector=Technology&country=US   # Multiple filters combined
     """
     ticker = filters.CharFilter(field_name='ticker', lookup_expr='iexact')
     sector = filters.CharFilter(field_name='sector', lookup_expr='iexact')
-    exchange = filters.CharFilter(field_name='exchange', lookup_expr='iexact')
+    exchange__name = filters.CharFilter(field_name='exchange__name', lookup_expr='iexact')
     country = filters.CharFilter(field_name='country', lookup_expr='iexact')
     
     class Meta:
