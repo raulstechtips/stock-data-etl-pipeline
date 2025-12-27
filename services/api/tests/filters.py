@@ -12,46 +12,51 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import BulkQueueRun, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 
 class TickerListFilterAPITest(APITestCase):
     """Tests for filtering on the GET /api/tickers endpoint."""
 
     def setUp(self):
         """Set up test fixtures with diverse stock data."""
+        # Create exchanges first
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        nyse = Exchange.objects.create(name='NYSE')
+        lse = Exchange.objects.create(name='LSE')
+        
         Stock.objects.create(
             ticker='AAPL',
             name='Apple Inc.',
             sector='Technology',
-            exchange='NASDAQ',
+            exchange=nasdaq,
             country='US'
         )
         Stock.objects.create(
             ticker='GOOGL',
             name='Alphabet Inc.',
             sector='Technology',
-            exchange='NASDAQ',
+            exchange=nasdaq,
             country='US'
         )
         Stock.objects.create(
             ticker='JPM',
             name='JPMorgan Chase',
             sector='Financials',
-            exchange='NYSE',
+            exchange=nyse,
             country='US'
         )
         Stock.objects.create(
             ticker='HSBC',
             name='HSBC Holdings',
             sector='Financials',
-            exchange='LSE',
+            exchange=lse,
             country='GB'
         )
         Stock.objects.create(
             ticker='TSM',
             name='Taiwan Semiconductor',
             sector='Technology',
-            exchange='NYSE',
+            exchange=nyse,
             country='TW'
         )
 
@@ -97,7 +102,7 @@ class TickerListFilterAPITest(APITestCase):
     def test_filter_by_exchange(self):
         """Test filtering by exchange."""
         url = reverse('api:ticker-list')
-        response = self.client.get(url, {'exchange': 'NASDAQ'})
+        response = self.client.get(url, {'exchange__name': 'NASDAQ'})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 2)
