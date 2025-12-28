@@ -969,3 +969,99 @@ class QueueAllStocksForFetchAPITest(APITestCase):
         
         # Verify message mentions exchange
         self.assertIn('NASDAQ', response.data['message'])
+
+
+class BulkQueueRunListAPITest(APITestCase):
+    """Tests for the GET /api/bulk-queue-runs endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create bulk queue runs with various states
+        BulkQueueRun.objects.create(
+            requested_by='admin@example.com',
+            total_stocks=100,
+            queued_count=95,
+            skipped_count=3,
+            error_count=2
+        )
+        
+        BulkQueueRun.objects.create(
+            requested_by='user@example.com',
+            total_stocks=50,
+            queued_count=0,
+            skipped_count=0,
+            error_count=0
+        )
+        
+        BulkQueueRun.objects.create(
+            requested_by='system@example.com',
+            total_stocks=200,
+            queued_count=200,
+            skipped_count=0,
+            error_count=0
+        )
+
+    def test_list_bulk_queue_runs(self):
+        """Test listing all bulk queue runs."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 3)
+
+    def test_list_bulk_queue_runs_empty(self):
+        """Test listing bulk queue runs when none exist."""
+        BulkQueueRun.objects.all().delete()
+        
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_bulk_queue_runs_pagination(self):
+        """Test cursor pagination for bulk queue runs."""
+        # Create more runs to test pagination
+        for i in range(55):
+            BulkQueueRun.objects.create(
+                requested_by=f'user{i}@example.com',
+                total_stocks=10
+            )
+        
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIn('next', response.data)
+        # Default page size is 50
+        self.assertEqual(len(response.data['results']), 50)
+        
+        # Test next page
+        if response.data['next']:
+            next_response = self.client.get(response.data['next'])
+            self.assertEqual(next_response.status_code, status.HTTP_200_OK)
+            self.assertGreater(len(next_response.data['results']), 0)
+
+    def test_response_format_matches_serializer(self):
+        """Test that response format matches BulkQueueRunSerializer output."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        
+        if len(response.data['results']) > 0:
+            result = response.data['results'][0]
+            # Verify all expected fields are present
+            self.assertIn('id', result)
+            self.assertIn('requested_by', result)
+            self.assertIn('total_stocks', result)
+            self.assertIn('queued_count', result)
+            self.assertIn('skipped_count', result)
+            self.assertIn('error_count', result)
+            self.assertIn('created_at', result)
+            self.assertIn('started_at', result)
+            self.assertIn('completed_at', result)

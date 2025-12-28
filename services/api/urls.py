@@ -13,11 +13,13 @@ Endpoints:
     GET  /runs                     - List all ingestion runs
     GET  /runs/ticker/<ticker>     - List runs for a specific ticker
     GET  /run/<run_id>/detail      - Get details of a specific run
+    GET  /bulk-queue-runs          - List all bulk queue runs
 """
 
 from django.urls import path
 
 from api.views import (
+    BulkQueueRunListView,
     QueueAllStocksForFetchView,
     QueueForFetchView,
     RunDetailView,
@@ -74,6 +76,13 @@ urlpatterns = [
         'run/<str:run_id>/detail',
         RunDetailView.as_view(),
         name='run-detail'
+    ),
+    
+    # Bulk queue run endpoints
+    path(
+        'bulk-queue-runs',
+        BulkQueueRunListView.as_view(),
+        name='bulk-queue-run-list'
     ),
 ]
 

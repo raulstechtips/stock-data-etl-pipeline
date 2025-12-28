@@ -9,6 +9,7 @@ This module contains the API views for:
 - GET /runs - List all ingestion runs
 - GET /runs/ticker/<ticker> - List runs for a specific ticker
 - GET /run/<run_id>/detail - Get details of a specific run
+- GET /bulk-queue-runs - List all bulk queue runs
 """
 
 import logging
@@ -25,7 +26,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.filters import StockFilter, StockIngestionRunFilter
+from api.filters import BulkQueueRunFilter, StockFilter, StockIngestionRunFilter
 from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 from api.serializers import (
     BulkQueueRunSerializer,
@@ -669,4 +670,41 @@ class QueueAllStocksForFetchView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class BulkQueueRunListView(ListAPIView):
+    """
+    API endpoint for listing all bulk queue runs.
+    
+    GET /bulk-queue-runs
+    
+    Returns a paginated list of all bulk queue runs with cursor-based pagination.
+    Supports filtering by requested_by, date ranges (created_at, started_at, completed_at),
+    completion status, and error presence.
+    
+    Filtering capabilities:
+    - requested_by: Exact requester match (case-insensitive)
+    - requested_by__icontains: Requester contains (case-insensitive)
+    - created_after/created_before: Filter by creation date range
+    - started_at_after/started_at_before: Filter by start date range
+    - completed_at_after/completed_at_before: Filter by completion date range
+    - is_completed: Filter by completion status (true = completed, false = incomplete)
+    - has_errors: Filter by error presence (true = has errors, false = no errors)
+    
+    Filters can be combined for precise queries. All filters work seamlessly with
+    cursor-based pagination.
+    
+    Example requests:
+        GET /api/bulk-queue-runs
+        GET /api/bulk-queue-runs?requested_by=admin@example.com
+        GET /api/bulk-queue-runs?is_completed=true&has_errors=false
+        GET /api/bulk-queue-runs?created_after=2025-01-01T00:00:00Z&is_completed=true
+        GET /api/bulk-queue-runs?requested_by__icontains=admin&has_errors=true
+    """
+    permission_classes = [AllowAny]
+    serializer_class = BulkQueueRunSerializer
+    pagination_class = StandardCursorPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = BulkQueueRunFilter
+    queryset = BulkQueueRun.objects.all().order_by('-created_at')
 

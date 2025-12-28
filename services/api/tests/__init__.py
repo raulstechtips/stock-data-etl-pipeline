@@ -25,13 +25,15 @@ from .views import (
     TickerDetailAPITest,
     RunListAPITest,
     TickerRunsListAPITest,
-    QueueAllStocksForFetchAPITest
+    QueueAllStocksForFetchAPITest,
+    BulkQueueRunListAPITest
 )
 from .filters import (
     TickerListFilterAPITest, 
     RunListFilterAPITest, 
     TickerRunsListFilterAPITest, 
-    BulkQueueRunFilterAPITest
+    BulkQueueRunFilterAPITest,
+    BulkQueueRunListFilterAPITest
 )
 
 __all__ = [
@@ -57,4 +59,6 @@ __all__ = [
     'TickerRunsListFilterAPITest',
     'QueueAllStocksForFetchAPITest',
     'BulkQueueRunFilterAPITest',
+    'BulkQueueRunListAPITest',
+    'BulkQueueRunListFilterAPITest',
 ]
