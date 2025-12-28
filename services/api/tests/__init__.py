@@ -60,5 +60,5 @@ __all__ = [
     'QueueAllStocksForFetchAPITest',
     'BulkQueueRunFilterAPITest',
     'BulkQueueRunListAPITest',
-    BulkQueueRunListFilterAPITest,
+    'BulkQueueRunListFilterAPITest',
 ]
