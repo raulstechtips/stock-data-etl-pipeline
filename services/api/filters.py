@@ -8,7 +8,7 @@ exact matches, contains searches, date ranges, and boolean filters.
 
 from django_filters import rest_framework as filters
 
-from api.models import Stock, StockIngestionRun, IngestionState
+from api.models import BulkQueueRun, Stock, StockIngestionRun, IngestionState
 
 
 class StockFilter(filters.FilterSet):
@@ -120,4 +120,69 @@ class StockIngestionRunFilter(filters.FilterSet):
             return queryset.exclude(state__in=terminal_states)
         else:
             return queryset.filter(state__in=terminal_states)
+
+
+class BulkQueueRunFilter(filters.FilterSet):
+    """
+    FilterSet for BulkQueueRun model.
+    
+    Provides comprehensive filtering for bulk queue run list views:
+    - requested_by: Filter by requester identifier (exact match, case-insensitive)
+    - requested_by__icontains: Filter by requester contains (case-insensitive)
+    - created_after: Filter runs created after a date
+    - created_before: Filter runs created before a date
+    - started_at_after: Filter runs started after a date
+    - started_at_before: Filter runs started before a date
+    - completed_at_after: Filter runs completed after a date
+    - completed_at_before: Filter runs completed before a date
+    - is_completed: Filter by completion status (true = completed, false = not completed)
+    - has_errors: Filter by error presence (true = has errors, false = no errors)
+    
+    Example usage:
+        ?requested_by=admin@example.com                    # Exact requester match (case-insensitive)
+        ?requested_by__icontains=admin                     # Requester contains 'admin'
+        ?created_after=2025-01-01T00:00:00Z                 # Runs created after Jan 1, 2025
+        ?created_before=2025-12-31T23:59:59Z               # Runs created before Dec 31, 2025
+        ?started_at_after=2025-01-01T00:00:00Z             # Runs started after Jan 1, 2025
+        ?started_at_before=2025-12-31T23:59:59Z            # Runs started before Dec 31, 2025
+        ?completed_at_after=2025-01-01T00:00:00Z           # Runs completed after Jan 1, 2025
+        ?completed_at_before=2025-12-31T23:59:59Z          # Runs completed before Dec 31, 2025
+        ?is_completed=true                                  # Only completed runs
+        ?is_completed=false                                 # Only incomplete runs
+        ?has_errors=true                                    # Only runs with errors (error_count > 0)
+        ?has_errors=false                                   # Only runs without errors (error_count = 0)
+        ?requested_by=admin@example.com&is_completed=true  # Multiple filters combined
+        ?created_after=2025-01-01T00:00:00Z&has_errors=true # Date range + error filter
+    """
+    requested_by = filters.CharFilter(field_name='requested_by', lookup_expr='iexact')
+    requested_by__icontains = filters.CharFilter(field_name='requested_by', lookup_expr='icontains')
+    created_after = filters.DateTimeFilter(field_name='created_at', lookup_expr='gte')
+    created_before = filters.DateTimeFilter(field_name='created_at', lookup_expr='lte')
+    started_at_after = filters.DateTimeFilter(field_name='started_at', lookup_expr='gte')
+    started_at_before = filters.DateTimeFilter(field_name='started_at', lookup_expr='lte')
+    completed_at_after = filters.DateTimeFilter(field_name='completed_at', lookup_expr='gte')
+    completed_at_before = filters.DateTimeFilter(field_name='completed_at', lookup_expr='lte')
+    is_completed = filters.BooleanFilter(field_name='completed_at', lookup_expr='isnull', exclude=True)
+    has_errors = filters.BooleanFilter(method='filter_has_errors')
+    
+    class Meta:
+        model = BulkQueueRun
+        fields = []
+    
+    def filter_has_errors(self, queryset, name, value):
+        """
+        Filter runs by error presence.
+        
+        Args:
+            queryset: The base queryset
+            name: The filter field name (unused)
+            value: Boolean - True for runs with errors, False for runs without errors
+            
+        Returns:
+            Filtered queryset
+        """
+        if value:
+            return queryset.filter(error_count__gt=0)
+        else:
+            return queryset.filter(error_count=0)
 

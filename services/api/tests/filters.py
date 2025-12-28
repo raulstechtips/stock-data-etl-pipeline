@@ -646,3 +646,280 @@ class BulkQueueRunFilterAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['id'], str(self.run1.id))
+
+
+class BulkQueueRunListFilterAPITest(APITestCase):
+    """Tests for filtering on the GET /api/bulk-queue-runs endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures with diverse bulk queue run data."""
+        now = timezone.now()
+        yesterday = now - timedelta(days=1)
+        two_days_ago = now - timedelta(days=2)
+        
+        # Create bulk queue runs with various states
+        self.completed_run = BulkQueueRun.objects.create(
+            requested_by='admin@example.com',
+            total_stocks=100,
+            queued_count=95,
+            skipped_count=3,
+            error_count=2,
+            started_at=yesterday,
+            completed_at=yesterday + timedelta(minutes=10)
+        )
+        
+        self.incomplete_run = BulkQueueRun.objects.create(
+            requested_by='user@example.com',
+            total_stocks=50,
+            queued_count=0,
+            skipped_count=0,
+            error_count=0,
+            started_at=None,
+            completed_at=None
+        )
+        
+        self.run_with_errors = BulkQueueRun.objects.create(
+            requested_by='admin@example.com',
+            total_stocks=200,
+            queued_count=190,
+            skipped_count=5,
+            error_count=5,
+            started_at=yesterday,
+            completed_at=yesterday + timedelta(minutes=15)
+        )
+        
+        self.run_without_errors = BulkQueueRun.objects.create(
+            requested_by='system@example.com',
+            total_stocks=75,
+            queued_count=75,
+            skipped_count=0,
+            error_count=0,
+            started_at=yesterday,
+            completed_at=yesterday + timedelta(minutes=5)
+        )
+        
+        # Set created_at explicitly for date filtering tests
+        self.completed_run.created_at = two_days_ago
+        self.completed_run.save()
+        
+        self.incomplete_run.created_at = now - timedelta(hours=1)
+        self.incomplete_run.save()
+
+    def test_filter_by_requested_by_exact(self):
+        """Test filtering by requested_by (exact match, case-insensitive)."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {'requested_by': 'admin@example.com'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+        
+        # Verify all results match
+        for result in response.data['results']:
+            self.assertEqual(result['requested_by'], 'admin@example.com')
+        
+        # Test case-insensitive
+        response_lower = self.client.get(url, {'requested_by': 'ADMIN@EXAMPLE.COM'})
+        self.assertEqual(response_lower.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response_lower.data['results']), 2)
+
+    def test_filter_by_requested_by_icontains(self):
+        """Test filtering by requested_by__icontains (partial match)."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {'requested_by__icontains': 'admin'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+        
+        # Verify all results contain 'admin'
+        for result in response.data['results']:
+            self.assertIn('admin', result['requested_by'].lower())
+
+    def test_filter_by_created_after(self):
+        """Test filtering by created_after date."""
+        url = reverse('api:bulk-queue-run-list')
+        # Filter for runs created after now (should return empty)
+        future_date = (timezone.now() + timedelta(days=1)).isoformat()
+        response = self.client.get(url, {'created_after': future_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+        
+        # Filter for runs created after 3 days ago (should return all)
+        past_date = (timezone.now() - timedelta(days=3)).isoformat()
+        response = self.client.get(url, {'created_after': past_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 4)
+
+    def test_filter_by_created_before(self):
+        """Test filtering by created_before date."""
+        url = reverse('api:bulk-queue-run-list')
+        # Filter for runs created before 3 days ago (should return empty)
+        past_date = (timezone.now() - timedelta(days=3)).isoformat()
+        response = self.client.get(url, {'created_before': past_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+        
+        # Filter for runs created before tomorrow (should return all)
+        future_date = (timezone.now() + timedelta(days=1)).isoformat()
+        response = self.client.get(url, {'created_before': future_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 4)
+
+    def test_filter_by_started_at_after(self):
+        """Test filtering by started_at_after date."""
+        url = reverse('api:bulk-queue-run-list')
+        # Filter for runs started after now (should return empty)
+        future_date = timezone.now().isoformat()
+        response = self.client.get(url, {'started_at_after': future_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+        
+        # Filter for runs started after 2 days ago (should return runs with started_at)
+        past_date = (timezone.now() - timedelta(days=2)).isoformat()
+        response = self.client.get(url, {'started_at_after': past_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should return 3 runs (completed_run, run_with_errors, run_without_errors)
+        self.assertEqual(len(response.data['results']), 3)
+
+    def test_filter_by_started_at_before(self):
+        """Test filtering by started_at_before date."""
+        url = reverse('api:bulk-queue-run-list')
+        # Filter for runs started before 2 days ago (should return empty)
+        past_date = (timezone.now() - timedelta(days=2)).isoformat()
+        response = self.client.get(url, {'started_at_before': past_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+        
+        # Filter for runs started before tomorrow (should return runs with started_at)
+        future_date = (timezone.now() + timedelta(days=1)).isoformat()
+        response = self.client.get(url, {'started_at_before': future_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should return 3 runs (completed_run, run_with_errors, run_without_errors)
+        self.assertEqual(len(response.data['results']), 3)
+
+    def test_filter_by_completed_at_after(self):
+        """Test filtering by completed_at_after date."""
+        url = reverse('api:bulk-queue-run-list')
+        # Filter for runs completed after now (should return empty)
+        future_date = timezone.now().isoformat()
+        response = self.client.get(url, {'completed_at_after': future_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+        
+        # Filter for runs completed after 2 days ago (should return completed runs)
+        past_date = (timezone.now() - timedelta(days=2)).isoformat()
+        response = self.client.get(url, {'completed_at_after': past_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should return 3 runs (completed_run, run_with_errors, run_without_errors)
+        self.assertEqual(len(response.data['results']), 3)
+
+    def test_filter_by_completed_at_before(self):
+        """Test filtering by completed_at_before date."""
+        url = reverse('api:bulk-queue-run-list')
+        # Filter for runs completed before 2 days ago (should return empty)
+        past_date = (timezone.now() - timedelta(days=2)).isoformat()
+        response = self.client.get(url, {'completed_at_before': past_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+        
+        # Filter for runs completed before tomorrow (should return completed runs)
+        future_date = (timezone.now() + timedelta(days=1)).isoformat()
+        response = self.client.get(url, {'completed_at_before': future_date})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should return 3 runs (completed_run, run_with_errors, run_without_errors)
+        self.assertEqual(len(response.data['results']), 3)
+
+    def test_filter_by_is_completed_true(self):
+        """Test filtering by is_completed=true returns only completed runs."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {'is_completed': 'true'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 3)
+        
+        # Verify all results have completed_at set
+        for result in response.data['results']:
+            self.assertIsNotNone(result['completed_at'])
+
+    def test_filter_by_is_completed_false(self):
+        """Test filtering by is_completed=false returns only incomplete runs."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {'is_completed': 'false'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        
+        # Verify all results have completed_at=None
+        for result in response.data['results']:
+            self.assertIsNone(result['completed_at'])
+
+    def test_filter_by_has_errors_true(self):
+        """Test filtering by has_errors=true returns only runs with error_count > 0."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {'has_errors': 'true'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+        
+        # Verify all results have error_count > 0
+        for result in response.data['results']:
+            self.assertGreater(result['error_count'], 0)
+
+    def test_filter_by_has_errors_false(self):
+        """Test filtering by has_errors=false returns only runs with error_count = 0."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {'has_errors': 'false'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+        
+        # Verify all results have error_count = 0
+        for result in response.data['results']:
+            self.assertEqual(result['error_count'], 0)
+
+    def test_filter_multiple_parameters(self):
+        """Test filtering with multiple parameters combined."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {
+            'requested_by': 'admin@example.com',
+            'is_completed': 'true',
+            'has_errors': 'true'
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Both completed_run and run_with_errors match: admin@example.com, completed, and has errors
+        self.assertEqual(len(response.data['results']), 2)
+        
+        # Verify all results match all filters
+        for result in response.data['results']:
+            self.assertEqual(result['requested_by'], 'admin@example.com')
+            self.assertIsNotNone(result['completed_at'])
+            self.assertGreater(result['error_count'], 0)
+
+    def test_filter_no_results(self):
+        """Test filtering that returns no results."""
+        url = reverse('api:bulk-queue-run-list')
+        # Filter by non-existent requester
+        response = self.client.get(url, {'requested_by': 'nonexistent@example.com'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_filter_case_insensitive_requested_by(self):
+        """Test that requested_by filtering is case-insensitive."""
+        url = reverse('api:bulk-queue-run-list')
+        response = self.client.get(url, {'requested_by': 'ADMIN@EXAMPLE.COM'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
