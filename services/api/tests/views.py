@@ -8,10 +8,12 @@ This test module covers:
 - Ensuring proper error handling for missing resources and invalid UUIDs
 """
 
+import time
 import uuid
 from unittest.mock import Mock, patch
 
 from celery.exceptions import OperationalError as CeleryOperationalError
+from django.core.cache import cache
 from django.urls import reverse
 from django.db import IntegrityError
 from rest_framework import status
@@ -1065,3 +1067,377 @@ class BulkQueueRunListAPITest(APITestCase):
             self.assertIn('created_at', result)
             self.assertIn('started_at', result)
             self.assertIn('completed_at', result)
+
+
+class BulkQueueRunStatsDetailAPITest(APITestCase):
+    """Tests for the GET /api/bulk-queue-runs/<bulk_queue_run_id>/stats endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Clear cache before each test
+        cache.clear()
+        
+        # Create a bulk queue run
+        self.bulk_queue_run = BulkQueueRun.objects.create(
+            requested_by='admin@example.com',
+            total_stocks=20000,
+            queued_count=19500,
+            skipped_count=400,
+            error_count=100
+        )
+
+    def tearDown(self):
+        """Clean up after each test."""
+        cache.clear()
+
+    def test_get_stats_returns_200_with_correct_structure(self):
+        """Test that GET returns 200 with correct data structure."""
+        # Create some ingestion runs with various states
+        stock1 = Stock.objects.create(ticker='AAPL')
+        stock2 = Stock.objects.create(ticker='GOOGL')
+        stock3 = Stock.objects.create(ticker='MSFT')
+        
+        StockIngestionRun.objects.create(
+            stock=stock1,
+            bulk_queue_run=self.bulk_queue_run,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        StockIngestionRun.objects.create(
+            stock=stock2,
+            bulk_queue_run=self.bulk_queue_run,
+            state=IngestionState.FETCHING
+        )
+        StockIngestionRun.objects.create(
+            stock=stock3,
+            bulk_queue_run=self.bulk_queue_run,
+            state=IngestionState.DONE
+        )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('id', response.data)
+        self.assertIn('ingestion_run_stats', response.data)
+
+    def test_response_includes_all_bulk_queue_run_fields(self):
+        """Test that response includes all BulkQueueRun fields."""
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('id', response.data)
+        self.assertIn('requested_by', response.data)
+        self.assertIn('total_stocks', response.data)
+        self.assertIn('queued_count', response.data)
+        self.assertIn('skipped_count', response.data)
+        self.assertIn('error_count', response.data)
+        self.assertIn('created_at', response.data)
+        self.assertIn('started_at', response.data)
+        self.assertIn('completed_at', response.data)
+        
+        # Verify values match
+        self.assertEqual(response.data['id'], str(self.bulk_queue_run.id))
+        self.assertEqual(response.data['requested_by'], 'admin@example.com')
+        self.assertEqual(response.data['total_stocks'], 20000)
+        self.assertEqual(response.data['queued_count'], 19500)
+        self.assertEqual(response.data['skipped_count'], 400)
+        self.assertEqual(response.data['error_count'], 100)
+
+    def test_ingestion_run_stats_includes_total_and_by_state(self):
+        """Test that ingestion_run_stats includes total count and counts by state."""
+        # Create ingestion runs with various states
+        stocks = [Stock.objects.create(ticker=f'TICK{i}') for i in range(10)]
+        
+        # Create runs with different states
+        states_to_create = [
+            (IngestionState.QUEUED_FOR_FETCH, 3),
+            (IngestionState.FETCHING, 2),
+            (IngestionState.FETCHED, 2),
+            (IngestionState.DONE, 2),
+            (IngestionState.FAILED, 1),
+        ]
+        
+        stock_idx = 0
+        for state, count in states_to_create:
+            for _ in range(count):
+                StockIngestionRun.objects.create(
+                    stock=stocks[stock_idx],
+                    bulk_queue_run=self.bulk_queue_run,
+                    state=state
+                )
+                stock_idx += 1
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('ingestion_run_stats', response.data)
+        
+        stats = response.data['ingestion_run_stats']
+        self.assertIn('total', stats)
+        self.assertIn('by_state', stats)
+        
+        # Verify total count
+        self.assertEqual(stats['total'], 10)
+        
+        # Verify counts by state
+        self.assertEqual(stats['by_state']['QUEUED_FOR_FETCH'], 3)
+        self.assertEqual(stats['by_state']['FETCHING'], 2)
+        self.assertEqual(stats['by_state']['FETCHED'], 2)
+        self.assertEqual(stats['by_state']['DONE'], 2)
+        self.assertEqual(stats['by_state']['FAILED'], 1)
+
+    def test_counts_by_state_are_accurate(self):
+        """Test that counts by state are accurate with various states."""
+        # Create ingestion runs covering all states
+        stocks = [Stock.objects.create(ticker=f'TICK{i}') for i in range(8)]
+        all_states = [
+            IngestionState.QUEUED_FOR_FETCH,
+            IngestionState.FETCHING,
+            IngestionState.FETCHED,
+            IngestionState.QUEUED_FOR_DELTA,
+            IngestionState.DELTA_RUNNING,
+            IngestionState.DELTA_FINISHED,
+            IngestionState.DONE,
+            IngestionState.FAILED,
+        ]
+        
+        for i, state in enumerate(all_states):
+            StockIngestionRun.objects.create(
+                stock=stocks[i],
+                bulk_queue_run=self.bulk_queue_run,
+                state=state
+            )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        stats = response.data['ingestion_run_stats']
+        
+        # Verify each state has count of 1
+        for state in all_states:
+            self.assertEqual(stats['by_state'][state], 1)
+        
+        # Verify total
+        self.assertEqual(stats['total'], len(all_states))
+
+    def test_caching_cache_miss_then_hit(self):
+        """Test that first request misses cache and second request hits cache."""
+        # Create some ingestion runs
+        stock = Stock.objects.create(ticker='AAPL')
+        StockIngestionRun.objects.create(
+            stock=stock,
+            bulk_queue_run=self.bulk_queue_run,
+            state=IngestionState.DONE
+        )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        
+        # First request - should miss cache
+        cache_key = f'bulk_queue_run_stats:{self.bulk_queue_run.id}'
+        self.assertIsNone(cache.get(cache_key))
+        
+        response1 = self.client.get(url)
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        
+        # Verify data is now in cache
+        cached_data = cache.get(cache_key)
+        self.assertIsNotNone(cached_data)
+        self.assertEqual(cached_data['id'], response1.data['id'])
+        
+        # Second request - should hit cache
+        response2 = self.client.get(url)
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response1.data, response2.data)
+
+    def test_cache_key_format_is_correct(self):
+        """Test that cache key format is correct."""
+        stock = Stock.objects.create(ticker='AAPL')
+        StockIngestionRun.objects.create(
+            stock=stock,
+            bulk_queue_run=self.bulk_queue_run,
+            state=IngestionState.DONE
+        )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        
+        # Make request to populate cache
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify cache key format
+        expected_cache_key = f'bulk_queue_run_stats:{self.bulk_queue_run.id}'
+        cached_data = cache.get(expected_cache_key)
+        self.assertIsNotNone(cached_data)
+
+    def test_cache_expiration_repopulates(self):
+        """Test that cache expires and repopulates after TTL."""
+        stock = Stock.objects.create(ticker='AAPL')
+        run1 = StockIngestionRun.objects.create(
+            stock=stock,
+            bulk_queue_run=self.bulk_queue_run,
+            state=IngestionState.DONE
+        )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        
+        # First request - populate cache
+        response1 = self.client.get(url)
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        
+        cache_key = f'bulk_queue_run_stats:{self.bulk_queue_run.id}'
+        self.assertIsNotNone(cache.get(cache_key))
+        
+        # Manually expire cache by deleting it
+        cache.delete(cache_key)
+        self.assertIsNone(cache.get(cache_key))
+        
+        # Create another ingestion run
+        stock2 = Stock.objects.create(ticker='GOOGL')
+        StockIngestionRun.objects.create(
+            stock=stock2,
+            bulk_queue_run=self.bulk_queue_run,
+            state=IngestionState.FAILED
+        )
+        
+        # Second request - should repopulate cache with new data
+        response2 = self.client.get(url)
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        
+        # Verify cache was repopulated
+        cached_data = cache.get(cache_key)
+        self.assertIsNotNone(cached_data)
+        
+        # Verify new data includes the new ingestion run
+        # Total should be 2 now (was 1, now 2)
+        self.assertEqual(response2.data['ingestion_run_stats']['total'], 2)
+
+    def test_404_when_bulk_queue_run_not_found(self):
+        """Test 404 response when BulkQueueRun doesn't exist."""
+        non_existent_id = uuid.uuid4()
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(non_existent_id)
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'BULK_QUEUE_RUN_NOT_FOUND')
+
+    def test_400_when_invalid_uuid_format(self):
+        """Test 400 response when bulk_queue_run_id is invalid UUID format."""
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': 'invalid-uuid'
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'INVALID_UUID')
+
+    def test_no_n_plus_1_queries(self):
+        """Test that aggregation query is efficient (verify no N+1 queries)."""
+        # Create multiple ingestion runs
+        stocks = [Stock.objects.create(ticker=f'TICK{i}') for i in range(20)]
+        for stock in stocks:
+            StockIngestionRun.objects.create(
+                stock=stock,
+                bulk_queue_run=self.bulk_queue_run,
+                state=IngestionState.DONE
+            )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        
+        # Use assertNumQueries to verify query efficiency
+        with self.assertNumQueries(2):  # One for BulkQueueRun, one for aggregation
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_empty_stats_when_no_ingestion_runs(self):
+        """Test with BulkQueueRun that has no related IngestionRuns (empty stats)."""
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('ingestion_run_stats', response.data)
+        
+        stats = response.data['ingestion_run_stats']
+        self.assertEqual(stats['total'], 0)
+        
+        # All states should be 0
+        for state_value, _ in IngestionState.choices:
+            self.assertEqual(stats['by_state'][state_value], 0)
+
+    def test_performance_with_many_ingestion_runs(self):
+        """Test with BulkQueueRun that has many IngestionRuns (performance test)."""
+        # Create 100 ingestion runs (simulating large dataset)
+        stocks = [Stock.objects.create(ticker=f'TICK{i}') for i in range(100)]
+        for stock in stocks:
+            StockIngestionRun.objects.create(
+                stock=stock,
+                bulk_queue_run=self.bulk_queue_run,
+                state=IngestionState.DONE
+            )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        
+        # Measure response time
+        start_time = time.time()
+        response = self.client.get(url)
+        elapsed_time = time.time() - start_time
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['ingestion_run_stats']['total'], 100)
+        
+        # Verify it completes within reasonable time (should be < 1 second for 100 runs)
+        self.assertLess(elapsed_time, 1.0)
+
+    def test_all_ingestion_state_values_represented(self):
+        """Test that all IngestionState values are represented in the counts."""
+        # Create one ingestion run for each state
+        stocks = [Stock.objects.create(ticker=f'TICK{i}') for i in range(len(IngestionState.choices))]
+        
+        for i, (state_value, _) in enumerate(IngestionState.choices):
+            StockIngestionRun.objects.create(
+                stock=stocks[i],
+                bulk_queue_run=self.bulk_queue_run,
+                state=state_value
+            )
+        
+        url = reverse('api:bulk-queue-run-stats-detail', kwargs={
+            'bulk_queue_run_id': str(self.bulk_queue_run.id)
+        })
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        stats = response.data['ingestion_run_stats']
+        
+        # Verify all states are present in by_state
+        for state_value, _ in IngestionState.choices:
+            self.assertIn(state_value, stats['by_state'])
+            self.assertEqual(stats['by_state'][state_value], 1)
+        
+        # Verify total matches number of states
+        self.assertEqual(stats['total'], len(IngestionState.choices))

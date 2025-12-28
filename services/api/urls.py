@@ -5,21 +5,23 @@ This module defines the URL patterns for the stock ingestion
 status tracking endpoints.
 
 Endpoints:
-    GET  /tickers                  - List all stocks
-    GET  /ticker/<ticker>/detail   - Get stock details
-    GET  /ticker/<ticker>/status   - Get current status of a stock
-    POST /ticker/queue             - Queue a stock for ingestion
-    POST /ticker/queue/all         - Queue all stocks for ingestion (bulk)
-    GET  /runs                     - List all ingestion runs
-    GET  /runs/ticker/<ticker>     - List runs for a specific ticker
-    GET  /run/<run_id>/detail      - Get details of a specific run
-    GET  /bulk-queue-runs          - List all bulk queue runs
+    GET  /tickers                                   - List all stocks
+    GET  /ticker/<ticker>/detail                    - Get stock details
+    GET  /ticker/<ticker>/status                    - Get current status of a stock
+    POST /ticker/queue                              - Queue a stock for ingestion
+    POST /ticker/queue/all                          - Queue all stocks for ingestion (bulk)
+    GET  /runs                                      - List all ingestion runs
+    GET  /runs/ticker/<ticker>                      - List runs for a specific ticker
+    GET  /run/<run_id>/detail                       - Get details of a specific run
+    GET  /bulk-queue-runs                           - List all bulk queue runs
+    GET  /bulk-queue-runs/<bulk_queue_run_id>/stats - Get stats for a bulk queue run
 """
 
 from django.urls import path
 
 from api.views import (
     BulkQueueRunListView,
+    BulkQueueRunStatsDetailView,
     QueueAllStocksForFetchView,
     QueueForFetchView,
     RunDetailView,
@@ -83,6 +85,11 @@ urlpatterns = [
         'bulk-queue-runs',
         BulkQueueRunListView.as_view(),
         name='bulk-queue-run-list'
+    ),
+    path(
+        'bulk-queue-runs/<str:bulk_queue_run_id>/stats',
+        BulkQueueRunStatsDetailView.as_view(),
+        name='bulk-queue-run-stats-detail'
     ),
 ]
 

@@ -13,8 +13,10 @@ This module contains the API views for:
 """
 
 import logging
+import time
 from uuid import UUID
 
+from django.core.cache import cache
 from django.db import IntegrityError
 from celery.exceptions import CeleryError, OperationalError as CeleryOperationalError
 from django_filters.rest_framework import DjangoFilterBackend
@@ -30,6 +32,7 @@ from api.filters import BulkQueueRunFilter, StockFilter, StockIngestionRunFilter
 from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 from api.serializers import (
     BulkQueueRunSerializer,
+    BulkQueueRunStatsSerializer,
     QueueAllStocksRequestSerializer,
     QueueForFetchRequestSerializer,
     StockIngestionRunSerializer,
@@ -494,6 +497,136 @@ class RunDetailView(APIView):
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class BulkQueueRunStatsDetailView(APIView):
+    """
+    API endpoint for getting aggregated statistics for a specific bulk queue run.
+    
+    GET /bulk-queue-runs/<bulk_queue_run_id>/stats
+    
+    Returns detailed information about a bulk queue run including aggregated
+    statistics from all related StockIngestionRun objects, grouped by state.
+    
+    This is an expensive operation as it processes ~20k IngestionRuns per call.
+    To optimize performance, responses are cached for 5 minutes (300 seconds).
+    The cache key format is 'bulk_queue_run_stats:{bulk_queue_run_id}'.
+    
+    Caching Strategy:
+    - First request: Cache miss - performs expensive aggregation query, stores
+      result in cache with 5-minute TTL, returns data
+    - Subsequent requests (within 5 minutes): Cache hit - returns cached data
+      immediately without database queries
+    - After 5 minutes: Cache expires, next request repopulates cache
+    
+    The view uses efficient database aggregation queries to minimize
+    database load. Aggregation is performed at the database level rather than
+    loading all objects into memory.
+    
+    Performance Considerations:
+    - Cached responses: <100ms
+    - Uncached responses: Completes within reasonable time for 20k+ IngestionRuns
+    - Uses database aggregations to minimize query overhead
+    """
+    permission_classes = [AllowAny]
+    cache_ttl = 300  # 5 minutes in seconds
+
+    def get(self, request: Request, bulk_queue_run_id: str) -> Response:
+        """
+        Get aggregated statistics for a specific bulk queue run.
+        
+        Args:
+            request: DRF Request object
+            bulk_queue_run_id: UUID string of the bulk queue run from URL path
+            
+        Returns:
+            Response with bulk queue run details and aggregated ingestion run
+            statistics, or 404 if not found, or 400 if UUID format is invalid
+        """
+        # Validate UUID format
+        try:
+            bulk_queue_run_uuid = UUID(bulk_queue_run_id)
+        except ValueError as e:
+            logger.warning(
+                "Invalid UUID format in bulk queue run stats request",
+                extra={'bulk_queue_run_id': bulk_queue_run_id, 'error': str(e)}
+            )
+            return Response(
+                {
+                    'error': {
+                        'message': f"Invalid bulk queue run ID format: '{bulk_queue_run_id}'",
+                        'code': 'INVALID_UUID',
+                        'details': {'bulk_queue_run_id': bulk_queue_run_id}
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        start_time = time.time()
+        cache_key = f'bulk_queue_run_stats:{bulk_queue_run_uuid}'
+        
+        # Check cache first
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            elapsed_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+            logger.info(
+                "Bulk queue run stats retrieved from cache",
+                extra={
+                    'bulk_queue_run_id': str(bulk_queue_run_uuid),
+                    'cache_key': cache_key,
+                    'elapsed_ms': round(elapsed_time, 2)
+                }
+            )
+            return Response(cached_data, status=status.HTTP_200_OK)
+        
+        # Cache miss - perform expensive aggregation
+        logger.info(
+            "Bulk queue run stats cache miss - performing aggregation",
+            extra={'bulk_queue_run_id': str(bulk_queue_run_uuid), 'cache_key': cache_key}
+        )
+        
+        try:
+            # Fetch BulkQueueRun
+            # Note: We don't use prefetch_related here because the serializer
+            # performs database aggregation which is more efficient than loading
+            # all objects into memory
+            bulk_queue_run = BulkQueueRun.objects.get(id=bulk_queue_run_uuid)
+        except BulkQueueRun.DoesNotExist:
+            logger.warning(
+                "Bulk queue run not found",
+                extra={'bulk_queue_run_id': str(bulk_queue_run_uuid)}
+            )
+            return Response(
+                {
+                    'error': {
+                        'message': f"Bulk queue run with ID '{bulk_queue_run_uuid}' not found",
+                        'code': 'BULK_QUEUE_RUN_NOT_FOUND',
+                        'details': {'bulk_queue_run_id': str(bulk_queue_run_uuid)}
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Serialize the data (this triggers the aggregation in the serializer)
+        serializer = BulkQueueRunStatsSerializer(bulk_queue_run)
+        serialized_data = serializer.data
+        
+        # Store in cache with 5-minute TTL
+        cache.set(cache_key, serialized_data, self.cache_ttl)
+        
+        elapsed_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        logger.info(
+            "Bulk queue run stats aggregated and cached",
+            extra={
+                'bulk_queue_run_id': str(bulk_queue_run_uuid),
+                'cache_key': cache_key,
+                'cache_ttl_seconds': self.cache_ttl,
+                'elapsed_ms': round(elapsed_time, 2),
+                'total_ingestion_runs': serialized_data.get('ingestion_run_stats', {}).get('total', 0)
+            }
+        )
+        
+        return Response(serialized_data, status=status.HTTP_200_OK)
 
 
 class QueueAllStocksForFetchView(APIView):

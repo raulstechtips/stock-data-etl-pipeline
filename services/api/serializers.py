@@ -233,3 +233,107 @@ class QueueAllStocksRequestSerializer(serializers.Serializer):
     )
 
 
+class BulkQueueRunStatsSerializer(serializers.ModelSerializer):
+    """
+    Serializer for BulkQueueRun with aggregated statistics from related ingestion runs.
+    
+    Extends BulkQueueRunSerializer to include base BulkQueueRun fields and adds
+    an ingestion_run_stats field that aggregates statistics from all related
+    StockIngestionRun objects linked to the BulkQueueRun.
+    
+    The ingestion_run_stats field provides:
+    - total: Total count of related StockIngestionRun objects
+    - by_state: Dictionary mapping each IngestionState to its count
+    
+    This serializer is used for the bulk queue run stats detail endpoint which
+    provides comprehensive statistics about the ingestion runs created by a
+    bulk queue operation. The aggregation is performed efficiently using
+    database annotations to minimize query overhead.
+    
+    Fields:
+        All fields from BulkQueueRun (id, requested_by, total_stocks, queued_count,
+        skipped_count, error_count, created_at, started_at, completed_at)
+        ingestion_run_stats: Dictionary containing total count and counts by state
+    """
+    ingestion_run_stats = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BulkQueueRun
+        fields = [
+            'id',
+            'requested_by',
+            'total_stocks',
+            'queued_count',
+            'skipped_count',
+            'error_count',
+            'created_at',
+            'started_at',
+            'completed_at',
+            'ingestion_run_stats',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'started_at',
+            'completed_at',
+            'ingestion_run_stats',
+        ]
+
+    def get_ingestion_run_stats(self, obj: BulkQueueRun) -> dict:
+        """
+        Aggregate statistics from all related StockIngestionRun objects.
+        
+        Groups ingestion runs by state and provides total count and counts
+        for each IngestionState. Uses efficient database aggregation to
+        minimize query overhead.
+        
+        Args:
+            obj: BulkQueueRun instance
+            
+        Returns:
+            Dictionary with 'total' count and 'by_state' dictionary mapping
+            each IngestionState value to its count. Example:
+            {
+                'total': 19500,
+                'by_state': {
+                    'QUEUED_FOR_FETCH': 5000,
+                    'FETCHING': 2000,
+                    'FETCHED': 3000,
+                    'QUEUED_FOR_DELTA': 4000,
+                    'DELTA_RUNNING': 1500,
+                    'DELTA_FINISHED': 2000,
+                    'DONE': 1500,
+                    'FAILED': 500
+                }
+            }
+        """
+        from django.db.models import Count
+        
+        # Get all related ingestion runs and aggregate by state
+        ingestion_runs = obj.ingestion_runs.all()
+        
+        # Aggregate counts by state using database aggregation
+        state_counts = (
+            ingestion_runs
+            .values('state')
+            .annotate(count=Count('id'))
+            .order_by('state')
+        )
+        
+        # Build the by_state dictionary, initializing all states to 0
+        by_state = {state[0]: 0 for state in IngestionState.choices}
+        
+        # Populate with actual counts
+        total = 0
+        for item in state_counts:
+            state = item['state']
+            count = item['count']
+            by_state[state] = count
+            total += count
+        
+        return {
+            'total': total,
+            'by_state': by_state,
+        }
+
+
