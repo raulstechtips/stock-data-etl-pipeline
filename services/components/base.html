@@ -1,0 +1,184 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}{% endblock %}</title>
+    
+    <!-- Tailwind CSS v4.0 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Heroicons (for icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/outline.min.css">
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    
+    <!-- Additional CSS blocks for specific pages -->
+    {% block extra_css %}{% endblock %}
+    
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // Enable class-based dark mode
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#ffffff',   // Pure white
+                            100: '#f8f9fa',  // Off-white
+                            200: '#e9ecef',  // Very light gray
+                            300: '#dee2e6',  // Light gray
+                            400: '#ced4da',  // Medium-light gray
+                            500: '#212529',  // Sophisticated black (primary buttons)
+                            600: '#1a1d21',  // Darker (hover)
+                            700: '#141619',  // Very dark
+                            800: '#0d0f11',  // Almost black
+                            900: '#070809',  // Deep black
+                        },
+                        // Theme-aware colors using CSS variables
+                        theme: {
+                            bg: {
+                                primary: 'var(--color-bg-primary)',
+                                secondary: 'var(--color-bg-secondary)',
+                                tertiary: 'var(--color-bg-tertiary)',
+                            },
+                            text: {
+                                primary: 'var(--color-text-primary)',
+                                secondary: 'var(--color-text-secondary)',
+                                tertiary: 'var(--color-text-tertiary)',
+                            },
+                            border: {
+                                primary: 'var(--color-border-primary)',
+                                secondary: 'var(--color-border-secondary)',
+                            },
+                        },
+                        // Utility colors
+                        success: {
+                            DEFAULT: 'var(--color-success)',
+                            light: 'var(--color-success-light)',
+                            dark: 'var(--color-success-dark)',
+                            text: 'var(--color-success-text)',
+                        },
+                        error: {
+                            DEFAULT: 'var(--color-error)',
+                            light: 'var(--color-error-light)',
+                            dark: 'var(--color-error-dark)',
+                            text: 'var(--color-error-text)',
+                        },
+                        danger: {
+                            DEFAULT: 'var(--color-danger)',
+                            light: 'var(--color-danger-light)',
+                            dark: 'var(--color-danger-dark)',
+                            text: 'var(--color-danger-text)',
+                        },
+                        warning: {
+                            DEFAULT: 'var(--color-warning)',
+                            light: 'var(--color-warning-light)',
+                            dark: 'var(--color-warning-dark)',
+                            text: 'var(--color-warning-text)',
+                        },
+                        info: {
+                            DEFAULT: 'var(--color-info)',
+                            light: 'var(--color-info-light)',
+                            dark: 'var(--color-info-dark)',
+                            text: 'var(--color-info-text)',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Theme Initialization Script (runs before body renders) -->
+    <script>
+        (function() {
+            // Get saved theme or default to light
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            
+            // Apply theme immediately to prevent flash
+            html.setAttribute('data-theme', savedTheme);
+            if (savedTheme === 'dark') {
+                html.classList.add('dark');
+            } else {
+                html.classList.remove('dark');
+            }
+        })();
+    </script>
+</head>
+<body class="bg-theme-primary text-theme-primary antialiased transition-colors duration-200">
+    <!-- Global Page Loading Overlay -->
+    <div 
+        id="page-loading-overlay" 
+        class="fixed inset-0 z-[100] bg-theme-primary flex items-center justify-center"
+        style="display: flex;">
+        <div class="text-center">
+            <svg class="animate-spin h-12 w-12 text-info mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-theme-secondary font-medium">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Sidebar Layout -->
+    <div x-data="{ sidebarOpen: window.innerWidth >= 768 }" class="flex h-screen overflow-hidden" style="opacity: 0;" id="main-content">
+        <!-- Sidebar -->
+        {% include 'components/shared/sidebar.html' %}
+        
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Bar -->
+            {% include 'components/shared/topbar.html' %}
+            
+            <!-- Page Content -->
+            <main class="flex-1 overflow-y-auto bg-theme-secondary p-4 md:p-6 lg:p-8">
+                <!-- Page Content -->
+                {% block content %}
+                {% endblock %}
+            </main>
+            
+            <!-- Footer -->
+            {% block footer %}
+            {% endblock %}
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    {% block modals %}
+    {% endblock %}
+    
+    <!-- Toast Notifications -->
+    {% include 'components/shared/toast_notification.html' %}
+
+    <!-- JavaScript Libraries -->
+    
+    <!-- Utility Scripts -->
+    <script src="{% static 'js/utils/global.js' %}"></script>
+    <script src="{% static 'js/utils/dates.js' %}"></script>
+    
+    <!-- API Client -->
+    <script src="{% static 'js/api/base.js' %}"></script>
+    <script src="{% static 'js/api/stocks.js' %}"></script>
+    <script src="{% static 'js/api/runs.js' %}"></script>
+    
+    <!-- Theme Toggle Store (load before baseStore so it can be initialized) -->
+    <script src="{% static 'js/stores/shared/themeToggleStore.js' %}"></script>
+    
+    <!-- Base Store -->
+    <script src="{% static 'js/stores/shared/baseStore.js' %}"></script>
+    
+    <!-- Additional JavaScript blocks for specific pages (loaded before Alpine) -->
+    {% block extra_js %}{% endblock %}
+    
+    <!-- Alpine.js 3.x for reactive components (loaded LAST so components are defined first) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    
+</body>
+</html>

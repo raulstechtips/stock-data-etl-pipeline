@@ -1,0 +1,392 @@
+/**
+ * Custom CSS for Modern Black & White Theme
+ * Provides dark mode/light mode support and utility color schemes
+ */
+
+/* ============================================
+   CSS Custom Properties (Theme Variables)
+   ============================================ */
+
+:root {
+  /* Light Mode - Modern Black & White Theme */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-bg-tertiary: #f3f4f6;
+  --color-text-primary: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+  --color-border-primary: #e5e7eb;
+  --color-border-secondary: #d1d5db;
+  
+  /* Utility Colors - Light Mode */
+  --color-success: #10b981;
+  --color-success-light: #d1fae5;
+  --color-success-dark: #059669;
+  --color-success-text: #065f46;
+  
+  --color-error: #ef4444;
+  --color-error-light: #fee2e2;
+  --color-error-dark: #dc2626;
+  --color-error-text: #991b1b;
+  
+  --color-warning: #f59e0b;
+  --color-warning-light: #fef3c7;
+  --color-warning-dark: #d97706;
+  --color-warning-text: #92400e;
+  
+  --color-info: #3b82f6;
+  --color-info-light: #dbeafe;
+  --color-info-dark: #2563eb;
+  --color-info-text: #1e40af;
+  
+  /* Alias danger to error */
+  --color-danger: var(--color-error);
+  --color-danger-light: var(--color-error-light);
+  --color-danger-dark: var(--color-error-dark);
+  --color-danger-text: var(--color-error-text);
+}
+
+[data-theme="dark"] {
+  /* Dark Mode - Modern Black & White Theme */
+  --color-bg-primary: #111827;
+  --color-bg-secondary: #1f2937;
+  --color-bg-tertiary: #374151;
+  --color-text-primary: #f9fafb;
+  --color-text-secondary: #d1d5db;
+  --color-text-tertiary: #9ca3af;
+  --color-border-primary: #374151;
+  --color-border-secondary: #4b5563;
+  
+  /* Utility Colors - Dark Mode */
+  --color-success: #10b981;
+  --color-success-light: #064e3b;
+  --color-success-dark: #34d399;
+  --color-success-text: #6ee7b7;
+  
+  --color-error: #ef4444;
+  --color-error-light: #7f1d1d;
+  --color-error-dark: #f87171;
+  --color-error-text: #fca5a5;
+  
+  --color-warning: #f59e0b;
+  --color-warning-light: #78350f;
+  --color-warning-dark: #fbbf24;
+  --color-warning-text: #fcd34d;
+  
+  --color-info: #3b82f6;
+  --color-info-light: #1e3a8a;
+  --color-info-dark: #60a5fa;
+  --color-info-text: #93c5fd;
+  
+  /* Alias danger to error */
+  --color-danger: var(--color-error);
+  --color-danger-light: var(--color-error-light);
+  --color-danger-dark: var(--color-error-dark);
+  --color-danger-text: var(--color-error-text);
+}
+
+/* ============================================
+   Base Theme Application
+   ============================================ */
+
+html {
+  color-scheme: light dark;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ============================================
+   Utility Classes - Background Colors
+   ============================================ */
+
+.bg-theme-primary {
+  background-color: var(--color-bg-primary);
+  transition: background-color 0.2s ease;
+}
+
+.bg-theme-secondary {
+  background-color: var(--color-bg-secondary);
+  transition: background-color 0.2s ease;
+}
+
+.bg-theme-tertiary {
+  background-color: var(--color-bg-tertiary);
+  transition: background-color 0.2s ease;
+}
+
+/* ============================================
+   Utility Classes - Text Colors
+   ============================================ */
+
+.text-theme-primary {
+  color: var(--color-text-primary);
+  transition: color 0.2s ease;
+}
+
+.text-theme-secondary {
+  color: var(--color-text-secondary);
+  transition: color 0.2s ease;
+}
+
+.text-theme-tertiary {
+  color: var(--color-text-tertiary);
+  transition: color 0.2s ease;
+}
+
+/* ============================================
+   Utility Classes - Border Colors
+   ============================================ */
+
+.border-theme-primary {
+  border-color: var(--color-border-primary);
+  transition: border-color 0.2s ease;
+}
+
+.border-theme-secondary {
+  border-color: var(--color-border-secondary);
+  transition: border-color 0.2s ease;
+}
+
+/* ============================================
+   Utility Classes - Success Colors
+   ============================================ */
+
+.bg-success {
+  background-color: var(--color-success);
+  transition: background-color 0.2s ease;
+}
+
+.bg-success-light {
+  background-color: var(--color-success-light);
+  transition: background-color 0.2s ease;
+}
+
+.bg-success-dark {
+  background-color: var(--color-success-dark);
+  transition: background-color 0.2s ease;
+}
+
+.text-success {
+  color: var(--color-success);
+  transition: color 0.2s ease;
+}
+
+.text-success-text {
+  color: var(--color-success-text);
+  transition: color 0.2s ease;
+}
+
+.border-success {
+  border-color: var(--color-success);
+  transition: border-color 0.2s ease;
+}
+
+/* ============================================
+   Utility Classes - Error/Danger Colors
+   ============================================ */
+
+.bg-error {
+  background-color: var(--color-error);
+  transition: background-color 0.2s ease;
+}
+
+.bg-error-light {
+  background-color: var(--color-error-light);
+  transition: background-color 0.2s ease;
+}
+
+.bg-error-dark {
+  background-color: var(--color-error-dark);
+  transition: background-color 0.2s ease;
+}
+
+.text-error {
+  color: var(--color-error);
+  transition: color 0.2s ease;
+}
+
+.text-error-text {
+  color: var(--color-error-text);
+  transition: color 0.2s ease;
+}
+
+.border-error {
+  border-color: var(--color-error);
+  transition: border-color 0.2s ease;
+}
+
+.bg-danger {
+  background-color: var(--color-danger);
+  transition: background-color 0.2s ease;
+}
+
+.bg-danger-light {
+  background-color: var(--color-danger-light);
+  transition: background-color 0.2s ease;
+}
+
+.bg-danger-dark {
+  background-color: var(--color-danger-dark);
+  transition: background-color 0.2s ease;
+}
+
+.text-danger {
+  color: var(--color-danger);
+  transition: color 0.2s ease;
+}
+
+.text-danger-text {
+  color: var(--color-danger-text);
+  transition: color 0.2s ease;
+}
+
+.border-danger {
+  border-color: var(--color-danger);
+  transition: border-color 0.2s ease;
+}
+
+/* ============================================
+   Utility Classes - Warning Colors
+   ============================================ */
+
+.bg-warning {
+  background-color: var(--color-warning);
+  transition: background-color 0.2s ease;
+}
+
+.bg-warning-light {
+  background-color: var(--color-warning-light);
+  transition: background-color 0.2s ease;
+}
+
+.bg-warning-dark {
+  background-color: var(--color-warning-dark);
+  transition: background-color 0.2s ease;
+}
+
+.text-warning {
+  color: var(--color-warning);
+  transition: color 0.2s ease;
+}
+
+.text-warning-text {
+  color: var(--color-warning-text);
+  transition: color 0.2s ease;
+}
+
+.border-warning {
+  border-color: var(--color-warning);
+  transition: border-color 0.2s ease;
+}
+
+/* ============================================
+   Utility Classes - Info Colors
+   ============================================ */
+
+.bg-info {
+  background-color: var(--color-info);
+  transition: background-color 0.2s ease;
+}
+
+.bg-info-light {
+  background-color: var(--color-info-light);
+  transition: background-color 0.2s ease;
+}
+
+.bg-info-dark {
+  background-color: var(--color-info-dark);
+  transition: background-color 0.2s ease;
+}
+
+.text-info {
+  color: var(--color-info);
+  transition: color 0.2s ease;
+}
+
+.text-info-text {
+  color: var(--color-info-text);
+  transition: color 0.2s ease;
+}
+
+.border-info {
+  border-color: var(--color-info);
+  transition: border-color 0.2s ease;
+}
+
+/* ============================================
+   Dark Mode Toggle Button Styles
+   ============================================ */
+
+.theme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.theme-toggle:hover {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-secondary);
+}
+
+.theme-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px var(--color-info);
+}
+
+.theme-toggle svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* ============================================
+   Sidebar Navigation Hover Effects
+   ============================================ */
+
+/* Enhanced hover effect for sidebar navigation items with better contrast */
+.sidebar-nav-item {
+  position: relative;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Light mode: Use a more visible gray for hover */
+:root:not([data-theme="dark"]) .sidebar-nav-item:hover {
+  background-color: #e5e7eb; /* More visible than tertiary in light mode */
+}
+
+/* Dark mode: Use a lighter gray for better contrast */
+[data-theme="dark"] .sidebar-nav-item:hover {
+  background-color: #4b5563; /* More visible than tertiary in dark mode */
+}
+
+/* ============================================
+   Accessibility - Reduced Motion
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
