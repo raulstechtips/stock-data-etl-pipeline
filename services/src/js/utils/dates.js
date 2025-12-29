@@ -152,6 +152,10 @@ const dateUtils = {
      * @returns {Date|null} - Date object, or null if invalid
      */
     parseDate(dateString) {
+        if (!this._isDateOnly(dateString)) {
+            console.warn(`parseDate expects YYYY-MM-DD format, got: "${dateString}"`);
+            return null;
+        }
         const date = new Date(dateString + 'T00:00:00');
         return this._isValidDate(date) ? date : null;
     },
