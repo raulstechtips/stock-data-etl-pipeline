@@ -39,10 +39,11 @@
   --color-info-dark: #2563eb;
   --color-info-text: #1e40af;
   
-  --color-danger: #ef4444;
-  --color-danger-light: #fee2e2;
-  --color-danger-dark: #dc2626;
-  --color-danger-text: #991b1b;
+  /* Alias danger to error */
+  --color-danger: var(--color-error);
+  --color-danger-light: var(--color-error-light);
+  --color-danger-dark: var(--color-error-dark);
+  --color-danger-text: var(--color-error-text);
 }
 
 [data-theme="dark"] {
@@ -77,10 +78,11 @@
   --color-info-dark: #60a5fa;
   --color-info-text: #93c5fd;
   
-  --color-danger: #ef4444;
-  --color-danger-light: #7f1d1d;
-  --color-danger-dark: #f87171;
-  --color-danger-text: #fca5a5;
+  /* Alias danger to error */
+  --color-danger: var(--color-error);
+  --color-danger-light: var(--color-error-light);
+  --color-danger-dark: var(--color-error-dark);
+  --color-danger-text: var(--color-error-text);
 }
 
 /* ============================================
