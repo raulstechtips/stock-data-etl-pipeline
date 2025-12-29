@@ -25,7 +25,7 @@ function defineBaseStore() {
             
             // Initialize theme toggle before hiding loading screen
             // This ensures theme is applied before content is visible
-            if (window.Alpine && Alpine.store('themeToggle')) {
+            if (Alpine.store('themeToggle')) {
                 Alpine.store('themeToggle').init();
             }
             
