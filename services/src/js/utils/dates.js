@@ -26,28 +26,44 @@ const dateUtils = {
     },
     
     /**
+     * Validate that a Date object is valid (not Invalid Date)
+     * @param {Date} date - Date object to validate
+     * @returns {boolean} - True if date is valid
+     * @private
+     */
+    _isValidDate(date) {
+        return date instanceof Date && !isNaN(date.getTime());
+    },
+    
+    /**
      * Parse string to Date with appropriate timezone handling
      * @param {string} str - Date string
-     * @returns {Date} - Parsed date
+     * @returns {Date|null} - Parsed date, or null if invalid
      * @private
      */
     _parseString(str) {
+        let date = null;
+        
         if (this._isDateOnly(str)) {
             // Date-only: parse as local midnight
-            return this.parseDate(str);
+            date = this.parseDate(str);
         } else if (this._isISOTimestamp(str)) {
             // ISO timestamp: parse as UTC (native behavior)
-            return new Date(str);
+            date = new Date(str);
         } else {
             // Fallback to native parser
-            return new Date(str);
+            date = new Date(str);
         }
+        
+        // Validate the parsed date and return null if invalid
+        return this._isValidDate(date) ? date : null;
     },
     
     /**
      * Format a date to YYYY-MM-DD
      * @param {Date|string} date - Date object or string
      * @returns {string} - Formatted date (YYYY-MM-DD)
+     * @throws {Error} If date is invalid
      */
     formatDate(date) {
         // If it's already a YYYY-MM-DD string, return it
@@ -56,7 +72,10 @@ const dateUtils = {
         }
         
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
@@ -68,10 +87,14 @@ const dateUtils = {
      * @param {Date|string} date - Date object or string
      * @param {object} options - Intl.DateTimeFormat options
      * @returns {string} - Formatted date (e.g., "Monday, October 13, 2025")
+     * @throws {Error} If date is invalid
      */
     formatDateLong(date, options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return d.toLocaleDateString('en-US', options);
     },
     
@@ -79,10 +102,14 @@ const dateUtils = {
      * Format a date to short format
      * @param {Date|string} date - Date object or string
      * @returns {string} - Formatted date (e.g., "Oct 13, 2025")
+     * @throws {Error} If date is invalid
      */
     formatDateShort(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     },
     
@@ -90,10 +117,14 @@ const dateUtils = {
      * Format a date to medium format
      * @param {Date|string} date - Date object or string
      * @returns {string} - Formatted date (e.g., "October 13, 2025")
+     * @throws {Error} If date is invalid
      */
     formatDateMedium(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     },
     
@@ -118,20 +149,42 @@ const dateUtils = {
     /**
      * Parse a date string to Date object
      * @param {string} dateString - Date string (YYYY-MM-DD)
-     * @returns {Date} - Date object
+     * @returns {Date|null} - Date object, or null if invalid
      */
     parseDate(dateString) {
-        return new Date(dateString + 'T00:00:00');
+        const date = new Date(dateString + 'T00:00:00');
+        return this._isValidDate(date) ? date : null;
+    },
+    
+    /**
+     * Parse date input (string or Date) to Date object with validation
+     * @param {Date|string} date - Date object or string
+     * @returns {Date|null} - Parsed date, or null if invalid
+     * @private
+     */
+    _parseDateInput(date) {
+        if (date instanceof Date) {
+            return this._isValidDate(date) ? date : null;
+        } else if (typeof date === 'string') {
+            return this._parseString(date);
+        } else {
+            // Invalid input type
+            return null;
+        }
     },
     
     /**
      * Get weekday name from date
      * @param {Date|string} date - Date object or string
      * @returns {string} - Weekday name (e.g., "Monday")
+     * @throws {Error} If date is invalid
      */
     getWeekdayName(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return d.toLocaleDateString('en-US', { weekday: 'long' });
     },
     
@@ -139,9 +192,13 @@ const dateUtils = {
      * Get weekday index (0 = Sunday, 1 = Monday, etc.)
      * @param {Date|string} date - Date object or string
      * @returns {number} - Weekday index
+     * @throws {Error} If date is invalid
      */
     getWeekdayIndex(date) {
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return d.getDay();
     },
     
@@ -150,10 +207,14 @@ const dateUtils = {
      * @param {Date|string} date - Date object or string (YYYY-MM-DD)
      * @param {number} days - Number of days to add (negative to subtract)
      * @returns {Date} - New date
+     * @throws {Error} If date is invalid
      */
     addDays(date, days) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         d.setDate(d.getDate() + days);
         return d;
     },
@@ -179,11 +240,15 @@ const dateUtils = {
     /**
      * Check if a date is today
      * @param {Date|string} date - Date object or string
-     * @returns {boolean} - True if date is today
+     * @returns {boolean} - True if date is today, false if invalid
      */
     isToday(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            console.warn(`Invalid date in isToday: ${date}`);
+            return false;
+        }
         const today = this.getToday();
         return d.toDateString() === today.toDateString();
     },
@@ -191,11 +256,15 @@ const dateUtils = {
     /**
      * Check if a date is in the past
      * @param {Date|string} date - Date object or string
-     * @returns {boolean} - True if date is in the past
+     * @returns {boolean} - True if date is in the past, false if invalid
      */
     isPast(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            console.warn(`Invalid date in isPast: ${date}`);
+            return false;
+        }
         d.setHours(0, 0, 0, 0);
         const today = this.getToday();
         return d < today;
@@ -204,11 +273,15 @@ const dateUtils = {
     /**
      * Check if a date is in the future
      * @param {Date|string} date - Date object or string
-     * @returns {boolean} - True if date is in the future
+     * @returns {boolean} - True if date is in the future, false if invalid
      */
     isFuture(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            console.warn(`Invalid date in isFuture: ${date}`);
+            return false;
+        }
         d.setHours(0, 0, 0, 0);
         const today = this.getToday();
         return d > today;
@@ -228,12 +301,20 @@ const dateUtils = {
      * @param {Date|string} startDate - Start date
      * @param {Date|string} endDate - End date
      * @returns {Array<Date>} - Array of dates
+     * @throws {Error} If startDate or endDate is invalid
      */
     getDateRange(startDate, endDate) {
         const dates = [];
         // Parse with explicit timezone handling
-        let currentDate = typeof startDate === 'string' ? this._parseString(startDate) : new Date(startDate);
-        const end = typeof endDate === 'string' ? this._parseString(endDate) : new Date(endDate);
+        let currentDate = this._parseDateInput(startDate);
+        const end = this._parseDateInput(endDate);
+        
+        if (currentDate === null) {
+            throw new Error(`Invalid start date: ${startDate}`);
+        }
+        if (end === null) {
+            throw new Error(`Invalid end date: ${endDate}`);
+        }
         
         while (currentDate <= end) {
             dates.push(new Date(currentDate));
@@ -247,10 +328,14 @@ const dateUtils = {
      * Get first day of month
      * @param {Date|string} date - Date object or string
      * @returns {Date} - First day of month
+     * @throws {Error} If date is invalid
      */
     getFirstDayOfMonth(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return new Date(d.getFullYear(), d.getMonth(), 1);
     },
     
@@ -258,10 +343,14 @@ const dateUtils = {
      * Get last day of month
      * @param {Date|string} date - Date object or string
      * @returns {Date} - Last day of month
+     * @throws {Error} If date is invalid
      */
     getLastDayOfMonth(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return new Date(d.getFullYear(), d.getMonth() + 1, 0);
     },
     
@@ -269,10 +358,14 @@ const dateUtils = {
      * Get month name
      * @param {Date|string} date - Date object or string
      * @returns {string} - Month name (e.g., "October")
+     * @throws {Error} If date is invalid
      */
     getMonthName(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return d.toLocaleDateString('en-US', { month: 'long' });
     },
     
@@ -280,21 +373,29 @@ const dateUtils = {
      * Get year
      * @param {Date|string} date - Date object or string
      * @returns {number} - Year
+     * @throws {Error} If date is invalid
      */
     getYear(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            throw new Error(`Invalid date: ${date}`);
+        }
         return d.getFullYear();
     },
     
     /**
      * Get relative time string (e.g., "Today", "Yesterday", "Tomorrow", "2 days ago")
      * @param {Date|string} date - Date object or string
-     * @returns {string} - Relative time string
+     * @returns {string} - Relative time string, or "Invalid Date" if date is invalid
      */
     getRelativeTime(date) {
         // Parse with explicit timezone handling
-        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
+        const d = this._parseDateInput(date);
+        if (d === null) {
+            console.warn(`Invalid date in getRelativeTime: ${date}`);
+            return 'Invalid Date';
+        }
         d.setHours(0, 0, 0, 0);
         const today = this.getToday();
         const diffTime = d - today;
@@ -313,7 +414,7 @@ const dateUtils = {
      * Format a timestamp with date and time
      * @param {Date|string} timestamp - ISO timestamp string or Date object (e.g., "2025-12-23T16:00:00Z")
      * @param {object} options - Intl.DateTimeFormat options
-     * @returns {string} - Formatted timestamp (e.g., "Dec 27, 2025, 10:30:00 PM EST")
+     * @returns {string} - Formatted timestamp (e.g., "Dec 27, 2025, 10:30:00 PM EST"), or "N/A" if invalid
      */
     formatTimestamp(timestamp, options = {
         year: 'numeric',
@@ -327,11 +428,15 @@ const dateUtils = {
         if (!timestamp) return 'N/A';
         try {
             // Parse with explicit timezone handling
-            const d = typeof timestamp === 'string' ? this._parseString(timestamp) : new Date(timestamp);
+            const d = this._parseDateInput(timestamp);
+            if (d === null) {
+                console.warn(`Invalid timestamp in formatTimestamp: ${timestamp}`);
+                return 'N/A';
+            }
             return d.toLocaleString('en-US', options);
         } catch (error) {
             console.error('Error formatting timestamp:', error);
-            return timestamp;
+            return 'N/A';
         }
     }
 };
