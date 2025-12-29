@@ -182,7 +182,8 @@ const dateUtils = {
      * @returns {boolean} - True if date is today
      */
     isToday(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         const today = this.getToday();
         return d.toDateString() === today.toDateString();
     },
@@ -193,7 +194,8 @@ const dateUtils = {
      * @returns {boolean} - True if date is in the past
      */
     isPast(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         d.setHours(0, 0, 0, 0);
         const today = this.getToday();
         return d < today;
@@ -205,7 +207,8 @@ const dateUtils = {
      * @returns {boolean} - True if date is in the future
      */
     isFuture(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         d.setHours(0, 0, 0, 0);
         const today = this.getToday();
         return d > today;
@@ -228,8 +231,9 @@ const dateUtils = {
      */
     getDateRange(startDate, endDate) {
         const dates = [];
-        let currentDate = new Date(startDate);
-        const end = new Date(endDate);
+        // Parse with explicit timezone handling
+        let currentDate = typeof startDate === 'string' ? this._parseString(startDate) : new Date(startDate);
+        const end = typeof endDate === 'string' ? this._parseString(endDate) : new Date(endDate);
         
         while (currentDate <= end) {
             dates.push(new Date(currentDate));
@@ -245,7 +249,8 @@ const dateUtils = {
      * @returns {Date} - First day of month
      */
     getFirstDayOfMonth(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         return new Date(d.getFullYear(), d.getMonth(), 1);
     },
     
@@ -255,7 +260,8 @@ const dateUtils = {
      * @returns {Date} - Last day of month
      */
     getLastDayOfMonth(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         return new Date(d.getFullYear(), d.getMonth() + 1, 0);
     },
     
@@ -265,7 +271,8 @@ const dateUtils = {
      * @returns {string} - Month name (e.g., "October")
      */
     getMonthName(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         return d.toLocaleDateString('en-US', { month: 'long' });
     },
     
@@ -275,7 +282,8 @@ const dateUtils = {
      * @returns {number} - Year
      */
     getYear(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         return d.getFullYear();
     },
     
@@ -285,7 +293,8 @@ const dateUtils = {
      * @returns {string} - Relative time string
      */
     getRelativeTime(date) {
-        const d = new Date(date);
+        // Parse with explicit timezone handling
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         d.setHours(0, 0, 0, 0);
         const today = this.getToday();
         const diffTime = d - today;
