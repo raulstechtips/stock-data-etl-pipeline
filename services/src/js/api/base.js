@@ -47,13 +47,13 @@ const api = {
             const url = `${this.baseURL}${endpoint}`;
             
             const response = await fetch(url, {
+                ...options,
                 headers: {
+                    ...options.headers,
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken,
-                    ...options.headers,
                 },
                 credentials: 'include',
-                ...options
             });
             
             // Handle empty responses (204 No Content)
