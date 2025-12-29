@@ -49,7 +49,7 @@ function defineBaseStore() {
                 mainContent.style.transition = 'opacity 0.3s ease-in';
                 mainContent.style.opacity = '1';
                 
-                // Hide overlay after animation (don't remove, so it can be reused)
+                // Hide overlay after animation
                 setTimeout(() => {
                     overlay.style.display = 'none';
                 }, 300);
