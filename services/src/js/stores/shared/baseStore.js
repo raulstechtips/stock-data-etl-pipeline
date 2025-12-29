@@ -16,7 +16,7 @@ function defineBaseStore() {
     Alpine.store('base', {
         // STATE
         _initialized: false,
-        pageLoading: false,
+        _loadingHidden: false,
         sidebarOpen: false,
 
         async init() {
@@ -34,8 +34,8 @@ function defineBaseStore() {
         },
 
         hidePageLoading() {
-            if (this.pageLoading) return;
-            this.pageLoading = true;
+            if (this._loadingHidden) return;
+            this._loadingHidden = true;
             
             const overlay = document.getElementById('page-loading-overlay');
             const mainContent = document.getElementById('main-content');
