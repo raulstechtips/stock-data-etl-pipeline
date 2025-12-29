@@ -307,9 +307,7 @@ body {
 
 .theme-toggle:focus {
   outline: none;
-  ring: 2px;
-  ring-color: var(--color-info);
-  ring-offset: 2px;
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px var(--color-info);
 }
 
 .theme-toggle svg {
