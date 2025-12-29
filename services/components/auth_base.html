@@ -1,0 +1,75 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block page_title %}Authentication{% endblock %} - Stock ETL Dashboard</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#ffffff',   // Pure white
+                            100: '#f8f9fa',  // Off-white
+                            200: '#e9ecef',  // Very light gray
+                            300: '#dee2e6',  // Light gray
+                            400: '#ced4da',  // Medium-light gray
+                            500: '#212529',  // Sophisticated black (primary buttons)
+                            600: '#1a1d21',  // Darker (hover)
+                            700: '#141619',  // Very dark
+                            800: '#0d0f11',  // Almost black
+                            900: '#070809',  // Deep black
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="h-screen overflow-hidden bg-theme-primary">
+    <!-- Split Screen Layout -->
+    <div class="flex h-screen">
+        <!-- Left Side: Branding (Desktop Only) -->
+        <div class="hidden md:flex md:w-2/5 bg-gradient-to-br from-primary-800 to-primary-900 items-center justify-center p-12">
+            <div class="text-center text-white">
+                <!-- Logo Placeholder -->
+                <div class="mb-8">
+                    <div class="w-48 h-48 mx-auto bg-white/10 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <!-- Chart/Database Icon using Heroicons style -->
+                        <svg class="w-32 h-32" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                        </svg>
+                    </div>
+                </div>
+                
+                <!-- Branding Text -->
+                <h1 class="text-3xl font-bold mb-2">Stock ETL Dashboard</h1>
+                <p class="text-xl text-gray-200 mb-4">Data Pipeline Management</p>
+                <p class="text-lg text-gray-300">Enterprise Analytics Platform</p>
+            </div>
+        </div>
+        
+        <!-- Right Side: Form Area -->
+        <div class="w-full md:w-3/5 flex items-center justify-center p-6 md:p-12 bg-theme-secondary overflow-y-auto">
+            <div class="w-full max-w-md">
+                {% block auth_content %}
+                <!-- Page-specific content -->
+                {% endblock %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
