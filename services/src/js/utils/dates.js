@@ -141,7 +141,7 @@ const dateUtils = {
      * @returns {number} - Weekday index
      */
     getWeekdayIndex(date) {
-        const d = new Date(date);
+        const d = typeof date === 'string' ? this._parseString(date) : new Date(date);
         return d.getDay();
     },
     
