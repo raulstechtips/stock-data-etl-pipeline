@@ -1,0 +1,162 @@
+<!-- Top Bar Component -->
+<!-- Logo and sidebar toggle button -->
+<header class="h-16 bg-theme-primary border-b border-theme-primary flex items-center justify-between px-4 md:px-6">
+    <!-- Left: Sidebar Toggle (Mobile) + Logo -->
+    <div class="flex items-center">
+        <!-- Mobile Menu Toggle -->
+        <button 
+            @click="sidebarOpen = !sidebarOpen"
+            class="md:hidden p-2 rounded-md text-theme-tertiary hover:text-theme-primary hover:bg-theme-secondary focus:outline-none focus:ring-2 focus:ring-primary-500"
+            aria-label="Toggle sidebar"
+        >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+        </button>
+        
+        <!-- Desktop Sidebar Toggle -->
+        <button 
+            @click="sidebarOpen = !sidebarOpen"
+            class="hidden md:block p-2 rounded-md text-theme-tertiary hover:text-theme-primary hover:bg-theme-secondary focus:outline-none focus:ring-2 focus:ring-primary-500"
+            aria-label="Toggle sidebar"
+        >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+        </button>
+        
+        <!-- Page Title -->
+        <div class="ml-4 md:ml-6">
+            <h1 class="text-lg md:text-xl font-semibold text-theme-primary">
+                {% block page_title %}Dashboard{% endblock %}
+            </h1>
+        </div>
+    </div>
+    
+    <!-- Right: User Profile / Actions -->
+    <div class="flex items-center space-x-4">
+        <!-- Current Date Display -->
+        <div class="hidden md:flex items-center text-sm text-theme-secondary">
+            <svg class="w-5 h-5 mr-2 text-theme-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            <span id="current-date-display">{{ current_date|default:"" }}</span>
+        </div>
+        
+        <!-- Theme Toggle Button -->
+        <button
+            type="button"
+            @click="$store.themeToggle.toggle()"
+            class="theme-toggle"
+            aria-label="Toggle dark mode"
+            title="Toggle theme"
+        >
+            <!-- Sun Icon (Light Mode) - shown when dark mode is active -->
+            <svg 
+                x-show="$store.themeToggle.isDark()"
+                class="w-5 h-5" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+            </svg>
+            <!-- Moon Icon (Dark Mode) - shown when light mode is active -->
+            <svg 
+                x-show="$store.themeToggle.isLight()"
+                class="w-5 h-5" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+            </svg>
+        </button>
+        
+        <!-- Profile Menu -->
+        <div x-data="{ profileOpen: false }" class="relative">
+            <button 
+                @click="profileOpen = !profileOpen"
+                class="flex items-center space-x-2 p-2 rounded-lg hover:bg-theme-secondary focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="User menu"
+            >
+                <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white font-medium overflow-hidden">
+                    {% if request.user.profile.avatar %}
+                        <img src="{{ request.user.profile.avatar }}" alt="Avatar" class="w-full h-full object-cover">
+                    {% else %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                        </svg>
+                    {% endif %}
+                </div>
+                <svg class="w-4 h-4 text-theme-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+            
+            <!-- Dropdown Menu -->
+            <div 
+                x-show="profileOpen"
+                @click.away="profileOpen = false"
+                x-transition:enter="transition ease-out duration-100"
+                x-transition:enter-start="transform opacity-0 scale-95"
+                x-transition:enter-end="transform opacity-100 scale-100"
+                x-transition:leave="transition ease-in duration-75"
+                x-transition:leave-start="transform opacity-100 scale-100"
+                x-transition:leave-end="transform opacity-0 scale-95"
+                class="absolute right-0 mt-2 w-56 bg-theme-primary rounded-lg shadow-lg border border-theme-primary py-2 z-50"
+                style="display: none;"
+            >
+                <!-- User Info -->
+                <div class="px-4 py-2 border-b border-theme-primary">
+                    <p class="font-medium text-theme-primary">{{ request.user.get_short_name }}</p>
+                    <p class="text-sm text-theme-secondary truncate">{{ request.user.email }}</p>
+                </div>
+                
+                <!-- Profile Link -->
+                <a href="" class="block px-4 py-2 text-sm text-theme-primary hover:bg-theme-secondary">
+                    <svg class="w-4 h-4 inline-block mr-2 text-theme-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                    Profile
+                </a>
+                
+                <!-- Settings (future feature) -->
+                <a href="#" class="block px-4 py-2 text-sm text-theme-tertiary cursor-not-allowed">
+                    <svg class="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    Settings <span class="text-xs">(Soon)</span>
+                </a>
+                
+                <div class="border-t border-theme-primary my-1"></div>
+                
+                <!-- Logout Button -->
+                <button 
+                    type="button"
+                    @click="$store.auth.logout()"
+                    class="w-full text-left px-4 py-2 text-sm text-error hover:bg-error-light"
+                >
+                    <svg class="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<script>
+    // Update current date display on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const dateDisplay = document.getElementById('current-date-display');
+        if (dateDisplay && !dateDisplay.textContent.trim()) {
+            const today = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            dateDisplay.textContent = today.toLocaleDateString('en-US', options);
+        }
+    });
+</script>
+
