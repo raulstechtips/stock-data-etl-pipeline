@@ -107,14 +107,17 @@ body {
 
 .bg-theme-primary {
   background-color: var(--color-bg-primary);
+  transition: background-color 0.2s ease;
 }
 
 .bg-theme-secondary {
   background-color: var(--color-bg-secondary);
+  transition: background-color 0.2s ease;
 }
 
 .bg-theme-tertiary {
   background-color: var(--color-bg-tertiary);
+  transition: background-color 0.2s ease;
 }
 
 /* ============================================
@@ -123,14 +126,17 @@ body {
 
 .text-theme-primary {
   color: var(--color-text-primary);
+  transition: color 0.2s ease;
 }
 
 .text-theme-secondary {
   color: var(--color-text-secondary);
+  transition: color 0.2s ease;
 }
 
 .text-theme-tertiary {
   color: var(--color-text-tertiary);
+  transition: color 0.2s ease;
 }
 
 /* ============================================
@@ -139,10 +145,12 @@ body {
 
 .border-theme-primary {
   border-color: var(--color-border-primary);
+  transition: border-color 0.2s ease;
 }
 
 .border-theme-secondary {
   border-color: var(--color-border-secondary);
+  transition: border-color 0.2s ease;
 }
 
 /* ============================================
@@ -151,26 +159,32 @@ body {
 
 .bg-success {
   background-color: var(--color-success);
+  transition: background-color 0.2s ease;
 }
 
 .bg-success-light {
   background-color: var(--color-success-light);
+  transition: background-color 0.2s ease;
 }
 
 .bg-success-dark {
   background-color: var(--color-success-dark);
+  transition: background-color 0.2s ease;
 }
 
 .text-success {
   color: var(--color-success);
+  transition: color 0.2s ease;
 }
 
 .text-success-text {
   color: var(--color-success-text);
+  transition: color 0.2s ease;
 }
 
 .border-success {
   border-color: var(--color-success);
+  transition: border-color 0.2s ease;
 }
 
 /* ============================================
@@ -179,50 +193,62 @@ body {
 
 .bg-error {
   background-color: var(--color-error);
+  transition: background-color 0.2s ease;
 }
 
 .bg-error-light {
   background-color: var(--color-error-light);
+  transition: background-color 0.2s ease;
 }
 
 .bg-error-dark {
   background-color: var(--color-error-dark);
+  transition: background-color 0.2s ease;
 }
 
 .text-error {
   color: var(--color-error);
+  transition: color 0.2s ease;
 }
 
 .text-error-text {
   color: var(--color-error-text);
+  transition: color 0.2s ease;
 }
 
 .border-error {
   border-color: var(--color-error);
+  transition: border-color 0.2s ease;
 }
 
 .bg-danger {
   background-color: var(--color-danger);
+  transition: background-color 0.2s ease;
 }
 
 .bg-danger-light {
   background-color: var(--color-danger-light);
+  transition: background-color 0.2s ease;
 }
 
 .bg-danger-dark {
   background-color: var(--color-danger-dark);
+  transition: background-color 0.2s ease;
 }
 
 .text-danger {
   color: var(--color-danger);
+  transition: color 0.2s ease;
 }
 
 .text-danger-text {
   color: var(--color-danger-text);
+  transition: color 0.2s ease;
 }
 
 .border-danger {
   border-color: var(--color-danger);
+  transition: border-color 0.2s ease;
 }
 
 /* ============================================
@@ -231,26 +257,32 @@ body {
 
 .bg-warning {
   background-color: var(--color-warning);
+  transition: background-color 0.2s ease;
 }
 
 .bg-warning-light {
   background-color: var(--color-warning-light);
+  transition: background-color 0.2s ease;
 }
 
 .bg-warning-dark {
   background-color: var(--color-warning-dark);
+  transition: background-color 0.2s ease;
 }
 
 .text-warning {
   color: var(--color-warning);
+  transition: color 0.2s ease;
 }
 
 .text-warning-text {
   color: var(--color-warning-text);
+  transition: color 0.2s ease;
 }
 
 .border-warning {
   border-color: var(--color-warning);
+  transition: border-color 0.2s ease;
 }
 
 /* ============================================
@@ -259,26 +291,32 @@ body {
 
 .bg-info {
   background-color: var(--color-info);
+  transition: background-color 0.2s ease;
 }
 
 .bg-info-light {
   background-color: var(--color-info-light);
+  transition: background-color 0.2s ease;
 }
 
 .bg-info-dark {
   background-color: var(--color-info-dark);
+  transition: background-color 0.2s ease;
 }
 
 .text-info {
   color: var(--color-info);
+  transition: color 0.2s ease;
 }
 
 .text-info-text {
   color: var(--color-info-text);
+  transition: color 0.2s ease;
 }
 
 .border-info {
   border-color: var(--color-info);
+  transition: border-color 0.2s ease;
 }
 
 /* ============================================
@@ -297,7 +335,7 @@ body {
   border: 1px solid var(--color-border-primary);
   color: var(--color-text-primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .theme-toggle:hover {
@@ -335,24 +373,6 @@ body {
   display: none;
 }
 
-/* ============================================
-   Smooth Transitions for Theme Changes
-   ============================================ */
-
-* {
-  transition-property: background-color, border-color, color;
-  transition-duration: 0.2s;
-  transition-timing-function: ease;
-}
-
-/* Exclude certain elements from transitions for performance */
-img,
-svg,
-video,
-canvas,
-iframe {
-  transition: none;
-}
 
 /* ============================================
    Sidebar Navigation Hover Effects
