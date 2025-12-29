@@ -409,9 +409,8 @@ const dateUtils = {
         if (diffDays === 1) return 'Tomorrow';
         if (diffDays === -1) return 'Yesterday';
         if (diffDays > 1) return `In ${diffDays} days`;
-        if (diffDays < -1) return `${Math.abs(diffDays)} days ago`;
         
-        return this.formatDateShort(date);
+        return `${Math.abs(diffDays)} days ago`;
     },
     
     /**
