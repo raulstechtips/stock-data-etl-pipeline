@@ -354,7 +354,7 @@ class RunListView(ListAPIView):
     GET /runs
     
     Returns a paginated list of all ingestion runs with cursor-based pagination.
-    Supports filtering by ticker, state, requested_by, date ranges, and terminal/in-progress status.
+    Supports filtering by run_id, ticker, state, requested_by, date ranges, and terminal/in-progress status.
     """
     permission_classes = [AllowAny]
     serializer_class = StockIngestionRunSerializer
@@ -371,7 +371,7 @@ class TickerRunsListView(ListAPIView):
     GET /runs/ticker/<ticker>
     
     Returns a paginated list of runs for the specified ticker.
-    Supports additional filtering by state, requested_by, date ranges, and terminal/in-progress status.
+    Supports additional filtering by run_id, state, requested_by, date ranges, and terminal/in-progress status.
     """
     permission_classes = [AllowAny]
     serializer_class = StockIngestionRunSerializer

@@ -48,6 +48,7 @@ class StockIngestionRunFilter(filters.FilterSet):
     FilterSet for StockIngestionRun model.
     
     Provides comprehensive filtering for ingestion run list views:
+    - run_id: Filter by ingestion run UUID (exact match)
     - ticker: Filter by stock ticker (exact or contains)
     - state: Filter by ingestion state
     - requested_by: Filter by requester identifier
@@ -58,6 +59,7 @@ class StockIngestionRunFilter(filters.FilterSet):
     - bulk_queue_run: Filter by BulkQueueRun UUID
     
     Example usage:
+        ?run_id=550e8400-e29b-41d4-a716-446655440000  # Specific run by UUID
         ?ticker=AAPL                           # Runs for AAPL
         ?ticker__icontains=app                 # Runs for tickers containing 'app'
         ?state=FAILED                          # Failed runs only
@@ -70,6 +72,7 @@ class StockIngestionRunFilter(filters.FilterSet):
         ?state=FAILED&created_after=2025-01-01 # Multiple filters combined
         ?bulk_queue_run=<uuid>&state=FAILED    # Failed runs from a bulk operation
     """
+    run_id = filters.UUIDFilter(field_name='id', lookup_expr='exact')
     ticker = filters.CharFilter(field_name='stock__ticker', lookup_expr='iexact')
     ticker__icontains = filters.CharFilter(field_name='stock__ticker', lookup_expr='icontains')
     state = filters.ChoiceFilter(field_name='state', choices=IngestionState.choices)
