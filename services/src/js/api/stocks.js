@@ -123,7 +123,7 @@ function defineStocksAPI() {
                     throw new Error('Ticker symbol is required');
                 }
 
-                const response = await window.api.request(`/ticker/${ticker}/detail`, {
+                const response = await window.api.request(`/ticker/${encodeURIComponent(ticker)}/detail`, {
                     method: 'GET'
                 });
 
@@ -158,7 +158,7 @@ function defineStocksAPI() {
                     throw new Error('Ticker symbol is required');
                 }
 
-                const response = await window.api.request(`/ticker/${ticker}/status`, {
+                const response = await window.api.request(`/ticker/${encodeURIComponent(ticker)}/status`, {
                     method: 'GET'
                 });
 
