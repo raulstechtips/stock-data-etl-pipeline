@@ -19,7 +19,7 @@ function defineBaseStore() {
         _loadingHidden: false,
         sidebarOpen: false,
 
-        async init() {
+        init() {
             if (this._initialized) return;
             this._initialized = true;
             
