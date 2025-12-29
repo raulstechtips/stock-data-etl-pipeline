@@ -8,6 +8,13 @@
  * Define the runs API store
  */
 function defineRunsAPI() {
+    if (!window.Alpine) {
+        console.error('Alpine.js is not available. Runs API store cannot be initialized.');
+        return;
+    }
+    
+    const Alpine = window.Alpine;
+    
     Alpine.store('runsAPI', {
         // State
         loading: false,

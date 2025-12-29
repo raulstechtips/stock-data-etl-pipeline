@@ -8,6 +8,13 @@
  * Define the stocks API store
  */
 function defineStocksAPI() {
+    if (!window.Alpine) {
+        console.error('Alpine.js is not available. Stocks API store cannot be initialized.');
+        return;
+    }
+    
+    const Alpine = window.Alpine;
+
     Alpine.store('stocksAPI', {
         // State
         loading: false,
