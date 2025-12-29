@@ -15,7 +15,7 @@
     <!-- Tailwind Config -->
     <script>
         tailwind.config = {
-            darkMode: 'class',
+            darkMode: 'class', // Enable class-based dark mode
             theme: {
                 extend: {
                     colors: {
@@ -31,10 +31,75 @@
                             800: '#0d0f11',  // Almost black
                             900: '#070809',  // Deep black
                         },
+                        // Theme-aware colors using CSS variables
+                        theme: {
+                            bg: {
+                                primary: 'var(--color-bg-primary)',
+                                secondary: 'var(--color-bg-secondary)',
+                                tertiary: 'var(--color-bg-tertiary)',
+                            },
+                            text: {
+                                primary: 'var(--color-text-primary)',
+                                secondary: 'var(--color-text-secondary)',
+                                tertiary: 'var(--color-text-tertiary)',
+                            },
+                            border: {
+                                primary: 'var(--color-border-primary)',
+                                secondary: 'var(--color-border-secondary)',
+                            },
+                        },
+                        // Utility colors
+                        success: {
+                            DEFAULT: 'var(--color-success)',
+                            light: 'var(--color-success-light)',
+                            dark: 'var(--color-success-dark)',
+                            text: 'var(--color-success-text)',
+                        },
+                        error: {
+                            DEFAULT: 'var(--color-error)',
+                            light: 'var(--color-error-light)',
+                            dark: 'var(--color-error-dark)',
+                            text: 'var(--color-error-text)',
+                        },
+                        danger: {
+                            DEFAULT: 'var(--color-danger)',
+                            light: 'var(--color-danger-light)',
+                            dark: 'var(--color-danger-dark)',
+                            text: 'var(--color-danger-text)',
+                        },
+                        warning: {
+                            DEFAULT: 'var(--color-warning)',
+                            light: 'var(--color-warning-light)',
+                            dark: 'var(--color-warning-dark)',
+                            text: 'var(--color-warning-text)',
+                        },
+                        info: {
+                            DEFAULT: 'var(--color-info)',
+                            light: 'var(--color-info-light)',
+                            dark: 'var(--color-info-dark)',
+                            text: 'var(--color-info-text)',
+                        },
                     }
                 }
             }
         }
+    </script>
+    
+    <!-- Theme Initialization Script (runs before body renders) -->
+    <script>
+        (function() {
+            // Get saved theme or default to light
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            
+            // Apply theme immediately to prevent flash
+            html.setAttribute('data-theme', savedTheme);
+            if (savedTheme === 'dark') {
+                html.classList.add('dark');
+            } else {
+                html.classList.remove('dark');
+            }
+        })();
     </script>
     
     {% block extra_head %}{% endblock %}
@@ -71,5 +136,17 @@
             </div>
         </div>
     </div>
+
+    <!-- Theme Toggle Store (load before baseStore so it can be initialized) -->
+    <script src="{% static 'js/stores/shared/themeToggleStore.js' %}"></script>
+    
+    <!-- Base Store -->
+    <script src="{% static 'js/stores/shared/baseStore.js' %}"></script>
+    
+    <!-- Additional JavaScript blocks for specific pages (loaded before Alpine) -->
+    {% block extra_js %}{% endblock %}
+    
+    <!-- Alpine.js 3.x for reactive components (loaded LAST so components are defined first) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </body>
 </html>
