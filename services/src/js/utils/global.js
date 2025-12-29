@@ -39,5 +39,3 @@ window.showConfirm = function(title, message, confirmText = 'Confirm', cancelTex
         }));
     });
 };
-
-console.log('Global utilities loaded');
