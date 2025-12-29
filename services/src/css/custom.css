@@ -356,26 +356,6 @@ body {
   transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
-/* Hide/show icons based on theme */
-[data-theme="dark"] .theme-toggle .sun-icon {
-  display: none;
-}
-
-[data-theme="dark"] .theme-toggle .moon-icon {
-  display: block;
-}
-
-[data-theme="light"] .theme-toggle .sun-icon,
-:root:not([data-theme]) .theme-toggle .sun-icon {
-  display: block;
-}
-
-[data-theme="light"] .theme-toggle .moon-icon,
-:root:not([data-theme]) .theme-toggle .moon-icon {
-  display: none;
-}
-
-
 /* ============================================
    Sidebar Navigation Hover Effects
    ============================================ */
