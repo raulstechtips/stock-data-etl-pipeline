@@ -30,6 +30,43 @@ function defineRunsAPI() {
         },
 
         /**
+         * Build query parameters for API requests
+         * @private
+         * @param {number} pageSize - Number of items per page
+         * @param {string} cursor - Pagination cursor
+         * @param {object} filters - Filter parameters
+         * @param {string[]} stringFilterKeys - Array of string filter keys to process
+         * @param {string[]} booleanFilterKeys - Array of boolean filter keys to process
+         * @returns {URLSearchParams} - Built query parameters
+         */
+        _buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys) {
+            const params = new URLSearchParams();
+            if (pageSize) params.append('page_size', pageSize);
+            if (cursor) params.append('cursor', cursor);
+
+            // Add filter parameters (skip null/undefined/empty string values)
+            if (filters && typeof filters === 'object') {
+                // Handle string filters
+                stringFilterKeys.forEach(key => {
+                    const value = filters[key];
+                    if (value !== null && value !== undefined && value !== '') {
+                        params.append(key, value);
+                    }
+                });
+
+                // Handle boolean filters (convert to string)
+                booleanFilterKeys.forEach(key => {
+                    const value = filters[key];
+                    if (value !== null && value !== undefined) {
+                        params.append(key, String(value));
+                    }
+                });
+            }
+
+            return params;
+        },
+
+        /**
          * List all ingestion runs across all stocks with pagination and optional filters
          * @param {number} pageSize - Number of items per page (max: 100)
          * @param {string} cursor - Pagination cursor from previous response
@@ -69,41 +106,19 @@ function defineRunsAPI() {
                 this.error = null;
 
                 // Build query parameters
-                const params = new URLSearchParams();
-                if (pageSize) params.append('page_size', pageSize);
-                if (cursor) params.append('cursor', cursor);
-
-                // Add filter parameters (skip null/undefined/empty string values)
-                if (filters && typeof filters === 'object') {
-                    const stringFilterKeys = [
-                        'ticker',
-                        'ticker__icontains',
-                        'state',
-                        'requested_by',
-                        'requested_by__icontains',
-                        'created_after',
-                        'created_before',
-                        'run_id',
-                        'bulk_queue_run'
-                    ];
-
-                    // Handle string filters
-                    stringFilterKeys.forEach(key => {
-                        const value = filters[key];
-                        if (value !== null && value !== undefined && value !== '') {
-                            params.append(key, value);
-                        }
-                    });
-
-                    // Handle boolean filters (convert to string)
-                    const booleanFilterKeys = ['is_terminal', 'is_in_progress'];
-                    booleanFilterKeys.forEach(key => {
-                        const value = filters[key];
-                        if (value !== null && value !== undefined) {
-                            params.append(key, String(value));
-                        }
-                    });
-                }
+                const stringFilterKeys = [
+                    'ticker',
+                    'ticker__icontains',
+                    'state',
+                    'requested_by',
+                    'requested_by__icontains',
+                    'created_after',
+                    'created_before',
+                    'run_id',
+                    'bulk_queue_run'
+                ];
+                const booleanFilterKeys = ['is_terminal', 'is_in_progress'];
+                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
 
                 const queryString = params.toString();
                 const endpoint = queryString ? `/runs?${queryString}` : '/runs';
@@ -172,41 +187,19 @@ function defineRunsAPI() {
                 }
 
                 // Build query parameters
-                const params = new URLSearchParams();
-                if (pageSize) params.append('page_size', pageSize);
-                if (cursor) params.append('cursor', cursor);
-
-                // Add filter parameters (skip null/undefined/empty string values)
-                if (filters && typeof filters === 'object') {
-                    const stringFilterKeys = [
-                        'ticker',
-                        'ticker__icontains',
-                        'state',
-                        'requested_by',
-                        'requested_by__icontains',
-                        'created_after',
-                        'created_before',
-                        'run_id',
-                        'bulk_queue_run'
-                    ];
-
-                    // Handle string filters
-                    stringFilterKeys.forEach(key => {
-                        const value = filters[key];
-                        if (value !== null && value !== undefined && value !== '') {
-                            params.append(key, value);
-                        }
-                    });
-
-                    // Handle boolean filters (convert to string)
-                    const booleanFilterKeys = ['is_terminal', 'is_in_progress'];
-                    booleanFilterKeys.forEach(key => {
-                        const value = filters[key];
-                        if (value !== null && value !== undefined) {
-                            params.append(key, String(value));
-                        }
-                    });
-                }
+                const stringFilterKeys = [
+                    'ticker',
+                    'ticker__icontains',
+                    'state',
+                    'requested_by',
+                    'requested_by__icontains',
+                    'created_after',
+                    'created_before',
+                    'run_id',
+                    'bulk_queue_run'
+                ];
+                const booleanFilterKeys = ['is_terminal', 'is_in_progress'];
+                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
 
                 const queryString = params.toString();
                 const endpoint = queryString 
@@ -340,40 +333,18 @@ function defineRunsAPI() {
                 this.error = null;
 
                 // Build query parameters
-                const params = new URLSearchParams();
-                if (pageSize) params.append('page_size', pageSize);
-                if (cursor) params.append('cursor', cursor);
-
-                // Add filter parameters (skip null/undefined/empty string values)
-                if (filters && typeof filters === 'object') {
-                    const stringFilterKeys = [
-                        'requested_by',
-                        'requested_by__icontains',
-                        'created_after',
-                        'created_before',
-                        'started_at_after',
-                        'started_at_before',
-                        'completed_at_after',
-                        'completed_at_before'
-                    ];
-
-                    // Handle string filters
-                    stringFilterKeys.forEach(key => {
-                        const value = filters[key];
-                        if (value !== null && value !== undefined && value !== '') {
-                            params.append(key, value);
-                        }
-                    });
-
-                    // Handle boolean filters (convert to string)
-                    const booleanFilterKeys = ['is_completed', 'has_errors'];
-                    booleanFilterKeys.forEach(key => {
-                        const value = filters[key];
-                        if (value !== null && value !== undefined) {
-                            params.append(key, String(value));
-                        }
-                    });
-                }
+                const stringFilterKeys = [
+                    'requested_by',
+                    'requested_by__icontains',
+                    'created_after',
+                    'created_before',
+                    'started_at_after',
+                    'started_at_before',
+                    'completed_at_after',
+                    'completed_at_before'
+                ];
+                const booleanFilterKeys = ['is_completed', 'has_errors'];
+                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
 
                 const queryString = params.toString();
                 const endpoint = queryString ? `/bulk-queue-runs?${queryString}` : '/bulk-queue-runs';
