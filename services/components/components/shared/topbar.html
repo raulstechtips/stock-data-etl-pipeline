@@ -38,7 +38,7 @@
         <!-- Current Date Display -->
         <div 
             x-data="{ 
-                currentDate: '{{ current_date|default:'' }}' || (window.dateUtils ? window.dateUtils.formatDateLong(new Date()) : '')
+                currentDate: '{{ current_date|default:'' }}' || (window.dateUtils ? window.dateUtils.formatDateLong(new Date()) : 'Loading...')
             }"
             class="hidden md:flex items-center text-sm text-theme-secondary"
         >
