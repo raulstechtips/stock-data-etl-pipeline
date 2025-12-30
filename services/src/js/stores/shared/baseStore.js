@@ -27,6 +27,11 @@ function defineBaseStore() {
             if (Alpine.store('themeToggle')) {
                 Alpine.store('themeToggle').init();
             }
+
+            // Ensure authAPI store is initialized
+            if (Alpine.store('authAPI')) {
+                Alpine.store('authAPI').init();
+            }
             
             // Hide page loading overlay
             this.hidePageLoading();

@@ -68,20 +68,23 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # "django.contrib.sites",  # Required for allauth
+    "django.contrib.sites",  # Required for allauth
 
     # "drf_spectacular",
     "rest_framework",
     "corsheaders",
+    "django_filters",
     # "rest_framework_simplejwt",
 
     # Allauth
-    # "allauth",
-    # "allauth.account",
-    # "allauth.headless",  # Headless API for JSON-based authentication
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.openid_connect",
 
     # Project apps
     "api",
+    "frontend",
     "workers",
 ]
 
@@ -95,7 +98,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # "allauth.account.middleware.AccountMiddleware",  # Required for Allauth
+    "allauth.account.middleware.AccountMiddleware",  # Required for Allauth
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -103,7 +106,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],  # Add project-level templates directory
+        "DIRS": [BASE_DIR / "components"],  # Add project-level templates directory
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -373,98 +376,90 @@ CSRF_COOKIE_SAMESITE = 'None' if APP_ENV in ["prod", "stage"] else 'Lax'
 #         raise ImproperlyConfigured(
 #             f"Missing required email settings: {', '.join(missing)}"
 #         )
+
+
 # ============================================
 # AUTHENTICATION CONFIGURATION
 # ============================================
 
 # Authentication backends
-# AUTHENTICATION_BACKENDS = [
-#     'django.contrib.auth.backends.ModelBackend',
-#     'allauth.account.auth_backends.AuthenticationBackend',
-# ]
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
 
 # # Custom User Model
 # AUTH_USER_MODEL = 'authentication.User'
 
-# # Site Framework (required for allauth)
-# SITE_ID = 1
+# Site Framework (required for allauth)
+SITE_ID = 1
 
-# # Site name and domain for email templates
-# SITE_NAME = ""
-# SITE_DOMAIN = os.environ.get('SITE_DOMAIN', 'localhost:8000')
+# Site domain for allauth
+SITE_DOMAIN = os.environ.get('SITE_DOMAIN', 'localhost:8000')
 
 
 # ============================================
 # ALLAUTH CONFIGURATION (Updated to new format)
 # ============================================
+KEYCLOAK_SERVER_URL = os.environ.get('KEYCLOAK_SERVER_URL', '')
+KEYCLOAK_CLIENT_ID = os.environ.get('KEYCLOAK_CLIENT_ID', '')
+KEYCLOAK_CLIENT_SECRET = os.environ.get('KEYCLOAK_CLIENT_SECRET', '')
+KEYCLOAK_ALLOWED_GROUPS = [
+    group.strip() for group in os.environ.get('KEYCLOAK_ALLOWED_GROUPS', '').split(',') if group.strip()
+]
+KEYCLOAK_GROUPS_CLAIM_NAME = os.environ.get('KEYCLOAK_GROUPS_CLAIM_NAME', '')
 
-# Authentication method (NEW FORMAT)
-# ACCOUNT_LOGIN_METHODS = {'email'}  # Email-only login (no username)
-# ACCOUNT_USER_MODEL_USERNAME_FIELD = None  # Disable username completely
+required_keycloak = {
+    "KEYCLOAK_SERVER_URL": KEYCLOAK_SERVER_URL,
+    "KEYCLOAK_CLIENT_ID": KEYCLOAK_CLIENT_ID,
+    "KEYCLOAK_CLIENT_SECRET": KEYCLOAK_CLIENT_SECRET,
+    "KEYCLOAK_ALLOWED_GROUPS": KEYCLOAK_ALLOWED_GROUPS,
+    "KEYCLOAK_GROUPS_CLAIM_NAME": KEYCLOAK_GROUPS_CLAIM_NAME,
+}
 
-# # Email verification
-# ACCOUNT_EMAIL_VERIFICATION = 'none'  # Disabled - users don't need email verification
-# ACCOUNT_PREVENT_ENUMERATION = True
-# ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = False
-# ACCOUNT_EMAIL_NOTIFICATIONS = True
-# ACCOUNT_EMAIL_SUBJECT_PREFIX = "[] "
-# EMAIL_SUBJECT_PREFIX = "[] "
+missing = [name for name, val in required_keycloak.items() if not val]
+if missing:
+    raise ImproperlyConfigured(
+        f"Missing required Keycloak settings: {', '.join(missing)}"
+    )
 
-# # Make headless emails link to your frontend:
-# FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8000')
-# HEADLESS_FRONTEND_URLS = {
-#     "account_confirm_email": FRONTEND_URL + "/account/verify-email/{key}",
-#     "account_reset_password": FRONTEND_URL + "/account/password/reset",
-#     "account_reset_password_from_key": FRONTEND_URL + "/account/password/reset/key/{key}",
-#     "account_signup": FRONTEND_URL + "/account/signup",
-# }
+ACCOUNT_SESSION_REMEMBER = True
+ACCOUNT_EMAIL_VERIFICATION = 'none'  # Skip email verification for OAuth providers
+ACCOUNT_AUTO_SIGNUP = True
 
-# # PASSWORD RESET FIELDS
-# ACCOUNT_PASSWORD_RESET_BY_CODE_TIMEOUT = 1800  # 30 minutes
-# # Signup fields (NEW FORMAT)
-# # Format: 'field' or 'field*' (asterisk = required)
-# ACCOUNT_SIGNUP_FIELDS = [
-#     'email*',        # Required: Email address
-#     'password1*',    # Required: Password
-#     'first_name*',   # Required: First name
-#     'last_name*',    # Required: Last name
-# ]
-# ACCOUNT_UNIQUE_EMAIL = True
+LOGIN_URL = '/dashboard/login/'                    # Redirect unauthenticated users to custom login
+LOGIN_REDIRECT_URL = '/'                 # Redirect to root for smart routing
+LOGOUT_REDIRECT_URL = '/dashboard/login/'          # Redirect back to login
 
-# URL redirects
-# LOGIN_URL = '/account/login/'
-# LOGIN_REDIRECT_URL = '/'  # Dashboard
-# ACCOUNT_LOGOUT_REDIRECT_URL = '/account/login/'
-# ACCOUNT_SIGNUP_REDIRECT_URL = '/'  # Dashboard
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_LOGIN_ON_GET = True  # Enable direct OAuth redirect
+SOCIALACCOUNT_ADAPTER = 'config.adapters.CustomSocialAccountAdapter'
 
-# Password settings
-# ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = False
+SOCIALACCOUNT_PROVIDERS = {
+    "openid_connect": {
+        # Optional PKCE defaults to False, but may be required by your provider
+        # Can be set globally, or per app (settings).
+        "OAUTH_PKCE_ENABLED": True,
+        "APPS": [
+            {
+                "provider_id": "keycloak",
+                "name": "Keycloak",
+                "client_id": KEYCLOAK_CLIENT_ID,
+                "secret": KEYCLOAK_CLIENT_SECRET,
+                "settings": {
+                    "server_url": KEYCLOAK_SERVER_URL,
+                    "auth_params": {
+                        "prompt": "login",
+                    }
+                }
+            }
+        ],
+        "VERIFIED_EMAIL": True,
+    }
+}
 
-# User activation
-# ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = '/'
-# ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https' if APP_ENV in ["prod", "stage"] else 'http'
-
-# Custom adapters
-# ACCOUNT_ADAPTER = 'authentication.adapters.CustomAccountAdapter'
-# HEADLESS_ADAPTER = 'authentication.adapters.CustomHeadlessAdapter'
-# ACCOUNT_CHANGE_EMAIL = True
-
-# Custom signup form for additional fields (first_name, last_name)
-# This automatically works with both regular and headless signup
-# ACCOUNT_SIGNUP_FORM_CLASS = 'authentication.forms.CustomSignupForm'
-
-# ============================================
-# ALLAUTH HEADLESS API CONFIGURATION
-# ============================================
-
-# Disable traditional allauth views (we use custom views to serve templates)
-# HEADLESS_ONLY = True
-
-# Future: Configure these when implementing email confirmation & password reset
-# HEADLESS_FRONTEND_URLS = {
-#     "account_confirm_email": "http://localhost:8000/account/verify-email/{key}",
-#     "account_reset_password_from_key": "http://localhost:8000/account/password/reset/{key}",
-# }
 
 # ============================================
 # REST FRAMEWORK CONFIGURATION
@@ -481,6 +476,12 @@ CSRF_COOKIE_SAMESITE = 'None' if APP_ENV in ["prod", "stage"] else 'Lax'
 # }
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.SessionAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated', # Protect API views by default
+    ),
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
@@ -506,7 +507,7 @@ REST_FRAMEWORK = {
 
 # Additional locations of static files
 STATICFILES_DIRS = [
-    BASE_DIR / "static_project",  # Project-level static files
+    BASE_DIR / "src",  # Project-level static files
 ]
 
 # S3/MinIO Storage Configuration
@@ -677,6 +678,11 @@ LOGGING = {
             'propagate': False,
         },
         'api': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'frontend': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
