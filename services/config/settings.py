@@ -748,4 +748,4 @@ if APP_ENV in ["prod", "stage"]:
     TEMPLATE_DEBUG = False
     
     # Security middleware settings
-    # SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
