@@ -32,8 +32,8 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         # Extract groups from the ID token
         user_groups = self._extract_groups_from_token(sociallogin)
         
-        logger.info(f"User attempting login with groups: {user_groups}")
-        logger.info(f"Allowed groups: {allowed_groups}")
+        logger.debug(f"User attempting login with groups: {user_groups}")
+        logger.debug(f"Allowed groups: {allowed_groups}")
         
         # Check if user has at least one allowed group
         if not any(group in allowed_groups for group in user_groups):
@@ -50,7 +50,7 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
                 )
             )
         
-        logger.info(f"Login approved: User has valid group membership")
+        logger.debug(f"Login approved: User has valid group membership")
         return super().pre_social_login(request, sociallogin)
     
     def _extract_groups_from_token(self, sociallogin):
@@ -91,12 +91,12 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
             if not isinstance(groups, list):
                 groups = [groups] if groups else []
             
-            logger.debug(f"Decoded token claims: {list(decoded_token.keys())}")
-            logger.debug(f"Extracted groups: {groups}")
+            logger.debug("Decoded token claims", extra={"claims": list(decoded_token.keys())})
+            logger.debug("Extracted groups", extra={"groups": groups})
             
         except jwt.DecodeError as e:
-            logger.error(f"Failed to decode ID token: {e}")
+            logger.exception("Failed to decode ID token")
         except Exception as e:
-            logger.error(f"Unexpected error extracting groups from token: {e}")
+            logger.exception("Unexpected error extracting groups from token")
         
         return groups
