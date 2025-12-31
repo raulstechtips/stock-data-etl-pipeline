@@ -331,7 +331,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Session settings
-ACCOUNT_SESSION_REMEMBER = False  # "Remember me" unchecked by default
 SESSION_COOKIE_AGE = 43200  # 12 hours (in seconds)
 SESSION_SAVE_EVERY_REQUEST = True  # Extend session on activity
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
