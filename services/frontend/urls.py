@@ -1,5 +1,5 @@
 from django.urls import path
-from frontend.views import LoginView
+from .views import LoginView
 
 app_name = 'frontend'
 
