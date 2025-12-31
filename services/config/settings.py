@@ -418,7 +418,7 @@ required_keycloak = {
 }
 
 missing = [name for name, val in required_keycloak.items() if not val]
-if missing:
+if missing and APP_ENV in ["prod", "stage"]:
     raise ImproperlyConfigured(
         f"Missing required Keycloak settings: {', '.join(missing)}"
     )
