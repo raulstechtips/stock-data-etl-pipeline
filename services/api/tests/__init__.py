@@ -36,6 +36,10 @@ from .filters import (
     BulkQueueRunFilterAPITest,
     BulkQueueRunListFilterAPITest
 )
+from .auth import (
+    AuthenticationRequiredAPITest,
+    AuthenticatedAccessAPITest,
+)
 
 __all__ = [
     'ExchangeModelTest',
@@ -63,4 +67,6 @@ __all__ = [
     'BulkQueueRunListAPITest',
     'BulkQueueRunListFilterAPITest',
     'BulkQueueRunStatsDetailAPITest',
+    'AuthenticationRequiredAPITest',
+    'AuthenticatedAccessAPITest',
 ]

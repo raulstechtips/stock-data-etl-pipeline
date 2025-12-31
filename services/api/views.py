@@ -67,7 +67,6 @@ class TickerListView(ListAPIView):
     Returns a paginated list of all stocks with cursor-based pagination.
     Supports filtering by ticker, sector, exchange, and country.
     """
-    permission_classes = [AllowAny]
     serializer_class = StockSerializer
     pagination_class = StandardCursorPagination
     filter_backends = [DjangoFilterBackend]
@@ -83,7 +82,6 @@ class TickerDetailView(APIView):
     
     Returns detailed information about a stock.
     """
-    permission_classes = [AllowAny]
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -134,7 +132,6 @@ class StockStatusView(APIView):
     
     Returns the stock's latest ingestion run status or 404 if not found.
     """
-    permission_classes = [AllowAny]
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -187,7 +184,6 @@ class QueueForFetchView(APIView):
     - Returns the existing active run if one exists
     - Creates a new run in QUEUED_FOR_FETCH state
     """
-    permission_classes = [AllowAny]
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -356,7 +352,6 @@ class RunListView(ListAPIView):
     Returns a paginated list of all ingestion runs with cursor-based pagination.
     Supports filtering by run_id, ticker, state, requested_by, date ranges, and terminal/in-progress status.
     """
-    permission_classes = [AllowAny]
     serializer_class = StockIngestionRunSerializer
     pagination_class = StandardCursorPagination
     filter_backends = [DjangoFilterBackend]
@@ -373,7 +368,6 @@ class TickerRunsListView(ListAPIView):
     Returns a paginated list of runs for the specified ticker.
     Supports additional filtering by run_id, state, requested_by, date ranges, and terminal/in-progress status.
     """
-    permission_classes = [AllowAny]
     serializer_class = StockIngestionRunSerializer
     pagination_class = StandardCursorPagination
     filter_backends = [DjangoFilterBackend]
@@ -433,7 +427,6 @@ class RunDetailView(APIView):
     
     Returns detailed information about an ingestion run.
     """
-    permission_classes = [AllowAny]
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -528,7 +521,6 @@ class BulkQueueRunStatsDetailView(APIView):
     - Uncached responses: Completes within reasonable time for 20k+ IngestionRuns
     - Uses database aggregations to minimize query overhead
     """
-    permission_classes = [AllowAny]
     cache_ttl = 300  # 5 minutes in seconds
 
     def get(self, request: Request, bulk_queue_run_id: str) -> Response:
@@ -640,7 +632,6 @@ class QueueAllStocksForFetchView(APIView):
     filtering to queue only stocks from a specific exchange. Returns immediately
     with task information (202 Accepted).
     """
-    permission_classes = [AllowAny]
 
     def post(self, request: Request) -> Response:
         """
@@ -834,7 +825,6 @@ class BulkQueueRunListView(ListAPIView):
         GET /api/bulk-queue-runs?created_after=2025-01-01T00:00:00Z&is_completed=true
         GET /api/bulk-queue-runs?requested_by__icontains=admin&has_errors=true
     """
-    permission_classes = [AllowAny]
     serializer_class = BulkQueueRunSerializer
     pagination_class = StandardCursorPagination
     filter_backends = [DjangoFilterBackend]

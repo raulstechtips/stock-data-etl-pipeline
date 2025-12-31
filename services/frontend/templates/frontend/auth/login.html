@@ -1,0 +1,50 @@
+{% extends 'auth_base.html' %}
+{% load socialaccount %}
+
+{% block page_title %}Login{% endblock %}
+
+{% block auth_content %}
+<!-- Mobile Logo (Hidden on Desktop) -->
+<div class="md:hidden text-center mb-8">
+    <div class="w-32 h-32 mx-auto bg-gradient-to-br from-primary-800 to-primary-900 rounded-full flex items-center justify-center">
+        <!-- Chart Icon using Heroicons -->
+        <svg class="w-20 h-20 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+        </svg>
+    </div>
+    <h2 class="text-2xl font-bold text-theme-primary mt-4">Stock ETL Dashboard</h2>
+    <p class="text-theme-secondary">Data Pipeline Management</p>
+</div>
+
+<!-- Login Card -->
+<div class="bg-theme-primary rounded-lg shadow-lg p-8 border border-theme-primary">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-theme-primary mb-2">Welcome Back</h1>
+        <p class="text-theme-secondary">Sign in to access your account</p>
+    </div>
+    
+    <!-- Keycloak Sign-In Button -->
+    <a href="{% provider_login_url 'keycloak' %}" 
+       class="flex items-center justify-center w-full py-4 px-6 bg-primary-700 text-white text-lg font-semibold rounded-lg hover:bg-primary-800 transition-colors duration-200 shadow-md hover:shadow-lg">
+        <!-- Key Icon (Heroicons) -->
+        <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+        </svg>
+        Sign in with Keycloak
+    </a>
+    
+    <!-- Danger Alert -->
+    <div class="mt-6 p-4 bg-danger-light border-l-4 border-danger rounded">
+        <div class="flex items-start">
+            <svg class="w-5 h-5 text-danger mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+                <p class="text-sm font-semibold text-danger-text">Restricted Access</p>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}

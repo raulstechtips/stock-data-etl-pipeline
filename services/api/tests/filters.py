@@ -7,6 +7,7 @@ This test module covers:
 
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -14,11 +15,21 @@ from rest_framework.test import APITestCase
 
 from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 
+User = get_user_model()
+
 class TickerListFilterAPITest(APITestCase):
     """Tests for filtering on the GET /api/tickers endpoint."""
 
     def setUp(self):
         """Set up test fixtures with diverse stock data."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         # Create exchanges first
         nasdaq = Exchange.objects.create(name='NASDAQ')
         nyse = Exchange.objects.create(name='NYSE')
@@ -159,6 +170,14 @@ class RunListFilterAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures with diverse run data."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         # Create stocks
         self.stock_aapl = Stock.objects.create(ticker='AAPL')
         self.stock_googl = Stock.objects.create(ticker='GOOGL')
@@ -368,6 +387,14 @@ class TickerRunsListFilterAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         # Create stocks
         self.stock_aapl = Stock.objects.create(ticker='AAPL')
         self.stock_googl = Stock.objects.create(ticker='GOOGL')
@@ -494,6 +521,14 @@ class BulkQueueRunFilterAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures with bulk queue runs."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         # Create stocks
         self.stock_aapl = Stock.objects.create(ticker='AAPL')
         self.stock_googl = Stock.objects.create(ticker='GOOGL')
@@ -653,6 +688,14 @@ class BulkQueueRunListFilterAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures with diverse bulk queue run data."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         now = timezone.now()
         yesterday = now - timedelta(days=1)
         two_days_ago = now - timedelta(days=2)

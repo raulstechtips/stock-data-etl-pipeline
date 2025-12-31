@@ -13,6 +13,7 @@ import uuid
 from unittest.mock import Mock, patch
 
 from celery.exceptions import OperationalError as CeleryOperationalError
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.urls import reverse
 from django.db import IntegrityError
@@ -21,12 +22,22 @@ from rest_framework.test import APITestCase
 
 from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
 
+User = get_user_model()
+
 
 class StockStatusAPITest(APITestCase):
     """Tests for the GET /api/ticker/<ticker>/status endpoint."""
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         self.stock = Stock.objects.create(ticker='AAPL')
 
     def test_get_status_existing_stock_with_run(self):
@@ -81,6 +92,14 @@ class QueueForFetchAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         self.url = reverse('api:queue-for-fetch')
 
     @patch('api.views.fetch_stock_data.delay')
@@ -269,6 +288,14 @@ class RunDetailAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         self.stock = Stock.objects.create(ticker='AAPL')
         self.run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -322,6 +349,14 @@ class TickerListAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         # Create multiple stocks for pagination testing
         Stock.objects.create(ticker='AAPL', name='Apple Inc.')
         Stock.objects.create(ticker='GOOGL', name='Alphabet Inc.')
@@ -380,6 +415,14 @@ class TickerDetailAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         self.stock = Stock.objects.create(
             ticker='AAPL',
             name='Apple Inc.',
@@ -423,6 +466,14 @@ class RunListAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         self.stock1 = Stock.objects.create(ticker='AAPL')
         self.stock2 = Stock.objects.create(ticker='GOOGL')
         
@@ -475,6 +526,14 @@ class TickerRunsListAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         self.stock1 = Stock.objects.create(ticker='AAPL')
         self.stock2 = Stock.objects.create(ticker='GOOGL')
         
@@ -555,6 +614,14 @@ class QueueAllStocksForFetchAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         self.url = reverse('api:queue-all-stocks-for-fetch')
 
     @patch('workers.tasks.queue_all_stocks_for_fetch.queue_all_stocks_for_fetch.delay')
@@ -978,6 +1045,14 @@ class BulkQueueRunListAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         # Create bulk queue runs with various states
         BulkQueueRun.objects.create(
             requested_by='admin@example.com',
@@ -1074,6 +1149,14 @@ class BulkQueueRunStatsDetailAPITest(APITestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
         # Clear cache before each test
         cache.clear()
         

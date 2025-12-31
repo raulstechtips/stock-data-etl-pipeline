@@ -44,7 +44,10 @@ const api = {
             // Get CSRF token from cookies
             const csrfToken = this.getCsrfToken();
             
-            const url = `${this.baseURL}${endpoint}`;
+            // Handle auth endpoints (/accounts/*)
+            const url = (endpoint.startsWith('/accounts/'))
+                ? endpoint
+                : `${this.baseURL}${endpoint}`;
             
             const response = await fetch(url, {
                 ...options,
