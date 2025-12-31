@@ -1,10 +1,12 @@
+import logging
+import jwt
+
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from allauth.exceptions import ImmediateHttpResponse
 from django.http import HttpResponseForbidden
 from django.contrib import messages
 from django.conf import settings
-import jwt
-import logging
+
 
 logger = logging.getLogger(__name__)
 
