@@ -151,7 +151,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Created At</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.created_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.created_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.created_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.created_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -159,7 +159,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Last Updated</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.updated_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.updated_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.updated_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.updated_at) : 'N/A'">
                                     </dd>
                                 </div>
                             </dl>
@@ -173,7 +173,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Queued for Fetch</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.queued_for_fetch_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.queued_for_fetch_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.queued_for_fetch_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.queued_for_fetch_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -181,7 +181,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Fetching Started</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.fetching_started_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.fetching_started_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.fetching_started_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.fetching_started_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -189,7 +189,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Fetching Finished</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.fetching_finished_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.fetching_finished_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.fetching_finished_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.fetching_finished_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -197,7 +197,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Queued for Delta</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.queued_for_delta_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.queued_for_delta_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.queued_for_delta_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.queued_for_delta_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -205,7 +205,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Delta Started</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.delta_started_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.delta_started_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.delta_started_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.delta_started_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -213,7 +213,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Delta Finished</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.delta_finished_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.delta_finished_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.delta_finished_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.delta_finished_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -221,7 +221,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Done At</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.done_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.done_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.done_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.done_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -229,7 +229,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Failed At</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.runDetailsModal.runData.failed_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.failed_at) : 'N/A'">
+                                        x-text="$store.runDetailsModal.runData.failed_at ? window.dateUtils.formatTimestamp($store.runDetailsModal.runData.failed_at) : 'N/A'">
                                     </dd>
                                 </div>
                             </dl>

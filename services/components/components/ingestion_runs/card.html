@@ -160,7 +160,7 @@
                 <span class="text-sm text-theme-tertiary" aria-label="Created at label">Created:</span>
                 <span 
                     class="text-sm text-theme-primary font-medium ml-1"
-                    x-text="run?.created_at ? dateUtils.formatTimestamp(run.created_at) : 'N/A'"
+                    x-text="run?.created_at ? window.dateUtils.formatTimestamp(run.created_at) : 'N/A'"
                     aria-label="Creation timestamp"
                 ></span>
             </div>
@@ -181,7 +181,7 @@
                 <span class="text-sm text-theme-tertiary" aria-label="Updated at label">Updated:</span>
                 <span 
                     class="text-sm text-theme-primary font-medium ml-1"
-                    x-text="run?.updated_at ? dateUtils.formatTimestamp(run.updated_at) : 'N/A'"
+                    x-text="run?.updated_at ? window.dateUtils.formatTimestamp(run.updated_at) : 'N/A'"
                     aria-label="Last update timestamp"
                 ></span>
             </div>

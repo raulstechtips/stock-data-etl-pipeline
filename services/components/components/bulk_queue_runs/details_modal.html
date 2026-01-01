@@ -153,7 +153,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Created At</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.bulkQueueRunDetailsModal.bulkQueueRunData?.created_at ? dateUtils.formatTimestamp($store.bulkQueueRunDetailsModal.bulkQueueRunData.created_at) : 'N/A'">
+                                        x-text="$store.bulkQueueRunDetailsModal.bulkQueueRunData?.created_at ? window.dateUtils.formatTimestamp($store.bulkQueueRunDetailsModal.bulkQueueRunData.created_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -161,7 +161,7 @@
                                 <div>
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Started At</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.bulkQueueRunDetailsModal.bulkQueueRunData?.started_at ? dateUtils.formatTimestamp($store.bulkQueueRunDetailsModal.bulkQueueRunData.started_at) : 'N/A'">
+                                        x-text="$store.bulkQueueRunDetailsModal.bulkQueueRunData?.started_at ? window.dateUtils.formatTimestamp($store.bulkQueueRunDetailsModal.bulkQueueRunData.started_at) : 'N/A'">
                                     </dd>
                                 </div>
 
@@ -169,7 +169,7 @@
                                 <div class="sm:col-span-2">
                                     <dt class="text-sm font-medium text-theme-text-tertiary">Completed At</dt>
                                     <dd class="mt-1 text-sm text-theme-text-primary" 
-                                        x-text="$store.bulkQueueRunDetailsModal.bulkQueueRunData?.completed_at ? dateUtils.formatTimestamp($store.bulkQueueRunDetailsModal.bulkQueueRunData.completed_at) : 'N/A'">
+                                        x-text="$store.bulkQueueRunDetailsModal.bulkQueueRunData?.completed_at ? window.dateUtils.formatTimestamp($store.bulkQueueRunDetailsModal.bulkQueueRunData.completed_at) : 'N/A'">
                                     </dd>
                                 </div>
                             </dl>

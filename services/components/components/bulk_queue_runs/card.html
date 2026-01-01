@@ -198,7 +198,7 @@
                     <span class="text-sm text-theme-tertiary" aria-label="Created at label">Created:</span>
                     <span 
                         class="text-sm text-theme-primary font-medium ml-1"
-                        x-text="run?.created_at ? dateUtils.formatTimestamp(run.created_at) : 'N/A'"
+                        x-text="run?.created_at ? window.dateUtils.formatTimestamp(run.created_at) : 'N/A'"
                         aria-label="Creation timestamp"
                     ></span>
                 </div>
@@ -221,7 +221,7 @@
                         <span class="text-sm text-theme-tertiary" aria-label="Started at label">Started:</span>
                         <span 
                             class="text-sm text-info font-medium ml-1"
-                            x-text="dateUtils.formatTimestamp(run.started_at)"
+                            x-text="window.dateUtils.formatTimestamp(run.started_at)"
                             aria-label="Start timestamp"
                         ></span>
                     </div>
@@ -244,7 +244,7 @@
                         <span class="text-sm text-theme-tertiary" aria-label="Completed at label">Completed:</span>
                         <span 
                             class="text-sm text-success font-medium ml-1"
-                            x-text="dateUtils.formatTimestamp(run.completed_at)"
+                            x-text="window.dateUtils.formatTimestamp(run.completed_at)"
                             aria-label="Completion timestamp"
                         ></span>
                     </div>

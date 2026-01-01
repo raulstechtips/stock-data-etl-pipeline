@@ -187,7 +187,7 @@
                             <div>
                                 <dt class="text-sm font-medium text-theme-text-tertiary">Created At</dt>
                                 <dd class="mt-1 text-sm text-theme-text-primary" 
-                                    x-text="$store.stockDetailsModal.runStatus.created_at ? dateUtils.formatTimestamp($store.stockDetailsModal.runStatus.created_at) : 'N/A'">
+                                    x-text="$store.stockDetailsModal.runStatus.created_at ? window.dateUtils.formatTimestamp($store.stockDetailsModal.runStatus.created_at) : 'N/A'">
                                 </dd>
                             </div>
 
@@ -195,7 +195,7 @@
                             <div>
                                 <dt class="text-sm font-medium text-theme-text-tertiary">Last Updated</dt>
                                 <dd class="mt-1 text-sm text-theme-text-primary" 
-                                    x-text="$store.stockDetailsModal.runStatus.updated_at ? dateUtils.formatTimestamp($store.stockDetailsModal.runStatus.updated_at) : 'N/A'">
+                                    x-text="$store.stockDetailsModal.runStatus.updated_at ? window.dateUtils.formatTimestamp($store.stockDetailsModal.runStatus.updated_at) : 'N/A'">
                                 </dd>
                             </div>
                         </dl>
