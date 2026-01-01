@@ -1,0 +1,345 @@
+<!-- Run Details Modal Component -->
+<!-- 
+  Modal component for displaying detailed ingestion run information.
+  Uses Alpine.js store for state management.
+  
+  Usage:
+  { include 'components/ingestion_runs/details_modal.html' }
+  
+  The modal is controlled via the runDetailsModal store.
+-->
+
+<!-- Modal Overlay and Container -->
+<div x-data="{}"
+    x-show="$store.runDetailsModal.isOpen"
+    x-cloak
+    @keydown.escape.window="$store.runDetailsModal.closeModal()"
+    class="fixed inset-0 z-50 overflow-y-auto"
+    aria-labelledby="modal-title"
+    aria-modal="true"
+    role="dialog"
+>
+    <!-- Backdrop -->
+    <div 
+        x-show="$store.runDetailsModal.isOpen"
+        x-transition:enter="ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-theme-primary bg-opacity-75 transition-opacity"
+        @click="$store.runDetailsModal.closeModal()"
+        aria-hidden="true"
+    ></div>
+
+    <!-- Modal Container -->
+    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+        <div 
+            x-show="$store.runDetailsModal.isOpen"
+            x-transition:enter="ease-out duration-300"
+            x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+            x-transition:leave="ease-in duration-200"
+            x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+            x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            class="relative transform overflow-hidden rounded-lg bg-theme-secondary text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl max-h-[90vh] overflow-y-auto"
+        >
+            <!-- Modal Header -->
+            <div class="bg-theme-primary px-4 pb-4 pt-5 sm:p-6 sm:pb-4 border-b border-theme-border-primary sticky top-0 z-10">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <h3 
+                            id="modal-title"
+                            class="text-2xl font-bold text-theme-text-primary mb-1"
+                            x-text="'Run Details: ' + ($store.runDetailsModal.runData?.ticker || 'N/A')"
+                        >
+                            Run Details
+                        </h3>
+                        <p 
+                            class="text-lg text-theme-text-secondary"
+                            x-text="$store.runDetailsModal.runData?.id || ''"
+                        ></p>
+                    </div>
+                    <button
+                        type="button"
+                        class="rounded-md bg-theme-secondary text-theme-text-tertiary hover:text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-theme-secondary transition-colors"
+                        @click="$store.runDetailsModal.closeModal()"
+                        aria-label="Close modal"
+                    >
+                        <span class="sr-only">Close</span>
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="bg-theme-secondary px-4 pb-4 pt-5 sm:p-6">
+                <template x-if="$store.runDetailsModal.runData">
+                    <div class="space-y-6">
+                        <!-- Basic Information Section -->
+                        <div>
+                            <h4 class="text-lg font-semibold text-theme-text-primary mb-4">Basic Information</h4>
+                            <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <!-- State Badge -->
+                                <div class="sm:col-span-2">
+                                    <dt class="text-sm font-medium text-theme-text-tertiary mb-2">State</dt>
+                                    <dd>
+                                        <span 
+                                            class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
+                                            :class="$store.runDetailsModal.getStateBadgeClass($store.runDetailsModal.runData.state)"
+                                            x-text="$store.runDetailsModal.runData.state || 'N/A'"
+                                        ></span>
+                                    </dd>
+                                </div>
+
+                                <!-- Ticker -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Ticker</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary font-medium" x-text="$store.runDetailsModal.runData.ticker || 'N/A'"></dd>
+                                </div>
+
+                                <!-- Run ID -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Run ID</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary font-mono break-all" x-text="$store.runDetailsModal.runData.id || 'N/A'"></dd>
+                                </div>
+
+                                <!-- Stock ID -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Stock ID</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary font-mono break-all" x-text="$store.runDetailsModal.runData.stock_id || 'N/A'"></dd>
+                                </div>
+
+                                <!-- Request ID -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Request ID</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary font-mono break-all" x-text="$store.runDetailsModal.runData.request_id || 'N/A'"></dd>
+                                </div>
+
+                                <!-- Requested By -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Requested By</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary break-all" x-text="$store.runDetailsModal.runData.requested_by || 'N/A'"></dd>
+                                </div>
+
+                                <!-- Is Terminal -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Terminal Status</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary">
+                                        <span 
+                                            :class="$store.runDetailsModal.runData.is_terminal ? 'text-success' : 'text-theme-text-tertiary'"
+                                            x-text="$store.runDetailsModal.runData.is_terminal ? 'Yes' : 'No'"
+                                        ></span>
+                                    </dd>
+                                </div>
+
+                                <!-- Is In Progress -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">In Progress</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary">
+                                        <span 
+                                            :class="$store.runDetailsModal.runData.is_in_progress ? 'text-info' : 'text-theme-text-tertiary'"
+                                            x-text="$store.runDetailsModal.runData.is_in_progress ? 'Yes' : 'No'"
+                                        ></span>
+                                    </dd>
+                                </div>
+
+                                <!-- Created At -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Created At</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.created_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.created_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Updated At -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Last Updated</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.updated_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.updated_at) : 'N/A'">
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+
+                        <!-- Workflow Timestamps Section -->
+                        <div class="border-t border-theme-border-primary pt-6">
+                            <h4 class="text-lg font-semibold text-theme-text-primary mb-4">Workflow Timestamps</h4>
+                            <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <!-- Queued for Fetch -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Queued for Fetch</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.queued_for_fetch_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.queued_for_fetch_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Fetching Started -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Fetching Started</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.fetching_started_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.fetching_started_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Fetching Finished -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Fetching Finished</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.fetching_finished_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.fetching_finished_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Queued for Delta -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Queued for Delta</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.queued_for_delta_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.queued_for_delta_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Delta Started -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Delta Started</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.delta_started_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.delta_started_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Delta Finished -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Delta Finished</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.delta_finished_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.delta_finished_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Done At -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Done At</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.done_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.done_at) : 'N/A'">
+                                    </dd>
+                                </div>
+
+                                <!-- Failed At -->
+                                <div>
+                                    <dt class="text-sm font-medium text-theme-text-tertiary">Failed At</dt>
+                                    <dd class="mt-1 text-sm text-theme-text-primary" 
+                                        x-text="$store.runDetailsModal.runData.failed_at ? dateUtils.formatTimestamp($store.runDetailsModal.runData.failed_at) : 'N/A'">
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+
+                        <!-- Error Information Section (if present) -->
+                        <template x-if="$store.runDetailsModal.runData?.error_code || $store.runDetailsModal.runData?.error_message">
+                            <div class="border-t border-theme-border-primary pt-6">
+                                <h4 class="text-lg font-semibold text-theme-text-primary mb-4 text-error">Error Information</h4>
+                                <dl class="grid grid-cols-1 gap-4">
+                                    <!-- Error Code -->
+                                    <template x-if="$store.runDetailsModal.runData?.error_code">
+                                        <div>
+                                            <dt class="text-sm font-medium text-error mb-1">Error Code</dt>
+                                            <dd class="text-sm text-error-text font-medium" x-text="$store.runDetailsModal.runData?.error_code || ''"></dd>
+                                        </div>
+                                    </template>
+
+                                    <!-- Error Message -->
+                                    <template x-if="$store.runDetailsModal.runData?.error_message">
+                                        <div>
+                                            <dt class="text-sm font-medium text-error mb-1">Error Message</dt>
+                                            <dd class="text-sm text-error-text break-words" x-text="$store.runDetailsModal.runData?.error_message || ''"></dd>
+                                        </div>
+                                    </template>
+                                </dl>
+                            </div>
+                        </template>
+
+                        <!-- Data URIs Section (if present) -->
+                        <template x-if="$store.runDetailsModal.runData?.raw_data_uri || $store.runDetailsModal.runData?.processed_data_uri">
+                            <div class="border-t border-theme-border-primary pt-6">
+                                <h4 class="text-lg font-semibold text-theme-text-primary mb-4">Data URIs</h4>
+                                <dl class="grid grid-cols-1 gap-4">
+                                    <!-- Raw Data URI -->
+                                    <template x-if="$store.runDetailsModal.runData?.raw_data_uri">
+                                        <div>
+                                            <dt class="text-sm font-medium text-theme-text-tertiary mb-1">Raw Data URI</dt>
+                                            <dd class="mt-1">
+                                                <div class="flex items-center gap-2">
+                                                    <a 
+                                                        :href="$store.runDetailsModal.runData?.raw_data_uri || '#'"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        class="text-sm text-info hover:text-info-dark font-medium break-all underline"
+                                                        x-text="$store.runDetailsModal.runData?.raw_data_uri || ''"
+                                                    ></a>
+                                                    <button
+                                                        type="button"
+                                                        @click="navigator.clipboard.writeText($store.runDetailsModal.runData?.raw_data_uri || '')"
+                                                        class="text-theme-text-tertiary hover:text-theme-text-primary transition-colors"
+                                                        aria-label="Copy raw data URI to clipboard"
+                                                        title="Copy to clipboard"
+                                                    >
+                                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </dd>
+                                        </div>
+                                    </template>
+
+                                    <!-- Processed Data URI -->
+                                    <template x-if="$store.runDetailsModal.runData?.processed_data_uri">
+                                        <div>
+                                            <dt class="text-sm font-medium text-theme-text-tertiary mb-1">Processed Data URI</dt>
+                                            <dd class="mt-1">
+                                                <div class="flex items-center gap-2">
+                                                    <a 
+                                                        :href="$store.runDetailsModal.runData?.processed_data_uri || '#'"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        class="text-sm text-info hover:text-info-dark font-medium break-all underline"
+                                                        x-text="$store.runDetailsModal.runData?.processed_data_uri || ''"
+                                                    ></a>
+                                                    <button
+                                                        type="button"
+                                                        @click="navigator.clipboard.writeText($store.runDetailsModal.runData?.processed_data_uri || '')"
+                                                        class="text-theme-text-tertiary hover:text-theme-text-primary transition-colors"
+                                                        aria-label="Copy processed data URI to clipboard"
+                                                        title="Copy to clipboard"
+                                                    >
+                                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </dd>
+                                        </div>
+                                    </template>
+                                </dl>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-theme-primary px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-theme-border-primary">
+                <!-- Close Button -->
+                <button
+                    type="button"
+                    class="mt-3 inline-flex w-full justify-center rounded-md bg-theme-secondary px-3 py-2 text-sm font-semibold text-theme-text-primary shadow-sm ring-1 ring-inset ring-theme-border-primary hover:bg-theme-tertiary sm:mt-0 sm:w-auto transition-colors"
+                    @click="$store.runDetailsModal.closeModal()"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+

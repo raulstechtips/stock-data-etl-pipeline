@@ -1,0 +1,249 @@
+<!-- Ingestion Run Card Component -->
+<!-- 
+  Reusable card component for displaying ingestion run information.
+  Designed to be used within an Alpine.js x-for loop.
+  
+  Usage:
+  <template x-for="run in runs" :key="run.id">
+    { include 'components/ingestion_runs/card.html' }
+  </template>
+  
+  The run data is accessed from the Alpine.js scope (current loop item).
+-->
+<div 
+    class="bg-theme-primary border border-theme-primary rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 flex flex-col h-full"
+    role="article"
+    aria-label="Ingestion run information card"
+>
+    <!-- Header: Ticker and State -->
+    <div class="mb-4">
+        <!-- Ticker (Prominently Displayed) -->
+        <h3 
+            class="text-2xl font-bold text-theme-primary mb-2"
+            x-text="run?.ticker || 'N/A'"
+            aria-label="Stock ticker symbol"
+        >
+        </h3>
+        
+        <!-- State Badge -->
+        <div class="mb-2">
+            <span 
+                class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
+                :class="run?.state === 'DONE' ? 'bg-success text-success-text' : 
+                        run?.state === 'FAILED' ? 'bg-error text-error-text' : 
+                        run?.state?.includes('QUEUED') ? 'bg-warning text-warning-text' : 
+                        'bg-info text-info-text'"
+                x-text="run?.state || 'N/A'"
+                aria-label="Ingestion run state"
+            ></span>
+        </div>
+    </div>
+
+    <!-- Run Information -->
+    <div class="flex-1 space-y-3 mb-4">
+        <!-- Run ID -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Run ID label">Run ID:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1 font-mono break-all"
+                    x-text="run?.id || 'N/A'"
+                    aria-label="Run ID value"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Request ID -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Request ID label">Request ID:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1 font-mono break-all"
+                    x-text="run?.request_id || 'N/A'"
+                    aria-label="Request ID value"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Requested By -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Requested by label">Requested by:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1 break-all"
+                    x-text="run?.requested_by || 'N/A'"
+                    aria-label="Requester email"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Status Indicators -->
+        <div class="flex items-center gap-4 pt-2">
+            <!-- Is Terminal Indicator -->
+            <div class="flex items-center gap-1.5">
+                <svg 
+                    class="w-4 h-4"
+                    :class="run?.is_terminal ? 'text-success' : 'text-theme-tertiary'"
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span 
+                    class="text-xs font-medium"
+                    :class="run?.is_terminal ? 'text-success' : 'text-theme-tertiary'"
+                    x-text="run?.is_terminal ? 'Terminal' : 'Active'"
+                    aria-label="Terminal status"
+                ></span>
+            </div>
+
+            <!-- Is In Progress Indicator -->
+            <div class="flex items-center gap-1.5" x-show="run?.is_in_progress">
+                <svg 
+                    class="w-4 h-4 text-info animate-spin"
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <span 
+                    class="text-xs font-medium text-info"
+                    x-text="'In Progress'"
+                    aria-label="In progress status"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Created At -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Created at label">Created:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1"
+                    x-text="run?.created_at ? dateUtils.formatTimestamp(run.created_at) : 'N/A'"
+                    aria-label="Creation timestamp"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Updated At -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Updated at label">Updated:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1"
+                    x-text="run?.updated_at ? dateUtils.formatTimestamp(run.updated_at) : 'N/A'"
+                    aria-label="Last update timestamp"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Error Code (if available) -->
+        <template x-if="run?.error_code">
+            <div class="flex items-start gap-2 pt-2 border-t border-theme-primary">
+                <svg 
+                    class="w-5 h-5 text-error mt-0.5 flex-shrink-0" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <span class="text-sm font-medium text-error" aria-label="Error code label">Error Code:</span>
+                    <span 
+                        class="text-sm text-error-text font-medium ml-1"
+                        x-text="run.error_code"
+                        aria-label="Error code value"
+                    ></span>
+                </div>
+            </div>
+        </template>
+
+        <!-- Error Message (if available) -->
+        <template x-if="run?.error_message">
+            <div class="flex items-start gap-2">
+                <svg 
+                    class="w-5 h-5 text-error mt-0.5 flex-shrink-0" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <span class="text-sm font-medium text-error" aria-label="Error message label">Error:</span>
+                    <span 
+                        class="text-sm text-error-text ml-1 break-words"
+                        x-text="run.error_message"
+                        aria-label="Error message value"
+                    ></span>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Footer: View Details Button -->
+    <div class="mt-auto pt-4 border-t border-theme-primary">
+        <button
+            type="button"
+            class="w-full px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-theme-primary"
+            aria-label="View details for ingestion run"
+            @click="$store.runDetailsModal.openModal(run)"
+        >
+            View Details
+        </button>
+    </div>
+</div>
+

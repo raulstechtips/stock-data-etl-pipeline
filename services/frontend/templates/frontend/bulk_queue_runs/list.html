@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Bulk Queue Runs - Stock ETL Dashboard{% endblock %}
+
+{% block content %}
+<div 
+    x-data="{ 
+        init() {
+            // Initialize stores
+            if (window.Alpine && Alpine.store('bulkQueueRunsList')) {
+                Alpine.store('bulkQueueRunsList').init();
+            }
+            if (window.Alpine && Alpine.store('bulkQueueRunDetailsModal')) {
+                Alpine.store('bulkQueueRunDetailsModal').init();
+            }
+            // Load bulk queue runs on page load
+            this.$nextTick(() => {
+                if (Alpine.store('bulkQueueRunsList')) {
+                    Alpine.store('bulkQueueRunsList').loadBulkQueueRuns();
+                }
+            });
+        }
+    }"
+    class="max-w-7xl mx-auto"
+>
+    <!-- Page Header -->
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-theme-primary mb-2">Bulk Queue Runs</h1>
+        <p class="text-theme-secondary">Browse and filter all bulk queue runs</p>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="bg-theme-primary border border-theme-primary rounded-lg p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-theme-primary">Filters</h2>
+            <button
+                type="button"
+                x-show="$store.bulkQueueRunsList.hasActiveFilters()"
+                @click="$store.bulkQueueRunsList.clearFilters()"
+                class="text-sm text-info hover:text-info-dark font-medium"
+                aria-label="Clear all filters"
+            >
+                Clear All
+            </button>
+        </div>
+
+        <form 
+            @submit.prevent="$store.bulkQueueRunsList.applyFilters()"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        >
+            <!-- Requested By (Exact) Filter -->
+            <div>
+                <label for="filter-requested-by" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Requested By (Exact)
+                </label>
+                <input
+                    type="text"
+                    id="filter-requested-by"
+                    x-model="$store.bulkQueueRunsList.filters.requested_by"
+                    placeholder="e.g., admin@example.com"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by exact requester"
+                />
+            </div>
+
+            <!-- Requested By Contains Filter -->
+            <div>
+                <label for="filter-requested-by-contains" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Requested By (Contains)
+                </label>
+                <input
+                    type="text"
+                    id="filter-requested-by-contains"
+                    x-model="$store.bulkQueueRunsList.filters.requested_by__icontains"
+                    placeholder="e.g., admin"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by requester contains"
+                />
+            </div>
+
+            <!-- Created After Filter -->
+            <div>
+                <label for="filter-created-after" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Created After
+                </label>
+                <input
+                    type="date"
+                    id="filter-created-after"
+                    x-model="$store.bulkQueueRunsList.filters.created_after"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs created after date"
+                />
+            </div>
+
+            <!-- Created Before Filter -->
+            <div>
+                <label for="filter-created-before" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Created Before
+                </label>
+                <input
+                    type="date"
+                    id="filter-created-before"
+                    x-model="$store.bulkQueueRunsList.filters.created_before"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs created before date"
+                />
+            </div>
+
+            <!-- Started At After Filter -->
+            <div>
+                <label for="filter-started-at-after" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Started After
+                </label>
+                <input
+                    type="date"
+                    id="filter-started-at-after"
+                    x-model="$store.bulkQueueRunsList.filters.started_at_after"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs started after date"
+                />
+            </div>
+
+            <!-- Started At Before Filter -->
+            <div>
+                <label for="filter-started-at-before" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Started Before
+                </label>
+                <input
+                    type="date"
+                    id="filter-started-at-before"
+                    x-model="$store.bulkQueueRunsList.filters.started_at_before"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs started before date"
+                />
+            </div>
+
+            <!-- Completed At After Filter -->
+            <div>
+                <label for="filter-completed-at-after" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Completed After
+                </label>
+                <input
+                    type="date"
+                    id="filter-completed-at-after"
+                    x-model="$store.bulkQueueRunsList.filters.completed_at_after"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs completed after date"
+                />
+            </div>
+
+            <!-- Completed At Before Filter -->
+            <div>
+                <label for="filter-completed-at-before" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Completed Before
+                </label>
+                <input
+                    type="date"
+                    id="filter-completed-at-before"
+                    x-model="$store.bulkQueueRunsList.filters.completed_at_before"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs completed before date"
+                />
+            </div>
+
+            <!-- Is Completed Filter -->
+            <div>
+                <label for="filter-is-completed" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Completion Status
+                </label>
+                <select
+                    id="filter-is-completed"
+                    x-model="$store.bulkQueueRunsList.filters.is_completed"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by completion status"
+                >
+                    <option value="">All</option>
+                    <option value="true">Completed</option>
+                    <option value="false">Not Completed</option>
+                </select>
+            </div>
+
+            <!-- Has Errors Filter -->
+            <div>
+                <label for="filter-has-errors" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Error Status
+                </label>
+                <select
+                    id="filter-has-errors"
+                    x-model="$store.bulkQueueRunsList.filters.has_errors"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by error presence"
+                >
+                    <option value="">All</option>
+                    <option value="true">Has Errors</option>
+                    <option value="false">No Errors</option>
+                </select>
+            </div>
+
+            <!-- Apply Filters Button -->
+            <div class="md:col-span-2 lg:col-span-3 flex justify-end">
+                <button
+                    type="submit"
+                    :disabled="$store.bulkQueueRunsList.loading"
+                    class="px-6 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Apply filters"
+                >
+                    <span x-show="!$store.bulkQueueRunsList.loading">Apply Filters</span>
+                    <span x-show="$store.bulkQueueRunsList.loading" class="flex items-center">
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading...
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="$store.bulkQueueRunsList.loading && $store.bulkQueueRunsList.bulkQueueRuns.length === 0" class="text-center py-12">
+        <svg class="animate-spin h-12 w-12 text-info mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="text-theme-secondary font-medium">Loading bulk queue runs...</p>
+    </div>
+
+    <!-- Error State -->
+    <div x-show="$store.bulkQueueRunsList.error && !$store.bulkQueueRunsList.loading" class="mb-6 rounded-md bg-error-light border border-error p-4">
+        <div class="flex items-start">
+            <svg class="w-5 h-5 text-error mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+                <p class="text-sm font-semibold text-error-text mb-1">Error Loading Bulk Queue Runs</p>
+                <p class="text-sm text-error-text" x-text="$store.bulkQueueRunsList.error"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="!$store.bulkQueueRunsList.loading && !$store.bulkQueueRunsList.error && $store.bulkQueueRunsList.bulkQueueRuns.length === 0" class="text-center py-12">
+        <svg class="w-16 h-16 text-theme-tertiary mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p class="text-lg font-medium text-theme-primary mb-1">No bulk queue runs found</p>
+        <p class="text-theme-secondary" x-show="$store.bulkQueueRunsList.hasActiveFilters()">
+            Try adjusting your filters or 
+            <button 
+                @click="$store.bulkQueueRunsList.clearFilters()"
+                class="text-info hover:text-info-dark font-medium underline"
+            >
+                clear all filters
+            </button>
+        </p>
+        <p class="text-theme-secondary" x-show="!$store.bulkQueueRunsList.hasActiveFilters()">
+            No bulk queue runs are available at this time.
+        </p>
+    </div>
+
+    <!-- Bulk Queue Runs Grid -->
+    <div 
+        x-show="!$store.bulkQueueRunsList.loading && $store.bulkQueueRunsList.bulkQueueRuns.length > 0"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6"
+    >
+        <template x-for="run in $store.bulkQueueRunsList.bulkQueueRuns" :key="run.id">
+            {% include 'components/bulk_queue_runs/card.html' %}
+        </template>
+    </div>
+
+    <!-- Pagination Controls -->
+    <div 
+        x-show="!$store.bulkQueueRunsList.loading && $store.bulkQueueRunsList.bulkQueueRuns.length > 0"
+        class="flex items-center justify-between border-t border-theme-primary pt-6"
+    >
+        <div class="flex items-center gap-2">
+            <button
+                type="button"
+                @click="$store.bulkQueueRunsList.previousPage()"
+                :disabled="!$store.bulkQueueRunsList.previousCursor || $store.bulkQueueRunsList.loading"
+                class="px-4 py-2 bg-theme-secondary border border-theme-primary text-theme-primary font-medium rounded-md hover:bg-theme-tertiary transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Go to previous page"
+            >
+                Previous
+            </button>
+            <button
+                type="button"
+                @click="$store.bulkQueueRunsList.nextPage()"
+                :disabled="!$store.bulkQueueRunsList.nextCursor || $store.bulkQueueRunsList.loading"
+                class="px-4 py-2 bg-theme-secondary border border-theme-primary text-theme-primary font-medium rounded-md hover:bg-theme-tertiary transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Go to next page"
+            >
+                Next
+            </button>
+        </div>
+        <div class="text-sm text-theme-secondary">
+            <span x-show="$store.bulkQueueRunsList.loading">Loading...</span>
+            <span x-show="!$store.bulkQueueRunsList.loading">
+                Showing <span x-text="$store.bulkQueueRunsList.bulkQueueRuns.length"></span> run<span x-show="$store.bulkQueueRunsList.bulkQueueRuns.length !== 1">s</span>
+            </span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'components/bulk_queue_runs/details_modal.html' %}
+{% endblock %}
+
+{% block extra_js %}
+    <!-- Bulk Queue Runs List Store -->
+    <script src="{% static 'js/stores/bulk_queue_runs/listStore.js' %}"></script>
+    
+    <!-- Bulk Queue Run Details Modal Store -->
+    <script src="{% static 'js/stores/bulk_queue_runs/detailsModalStore.js' %}"></script>
+{% endblock %}
+

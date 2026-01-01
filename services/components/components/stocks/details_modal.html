@@ -1,0 +1,235 @@
+<!-- Stock Details Modal Component -->
+<!-- 
+  Modal component for displaying stock details and managing stock ingestion runs.
+  Uses Alpine.js store for state management.
+  
+  Usage:
+  { include 'components/stocks/details_modal.html' }
+  
+  The modal is controlled via the stockDetailsModal store.
+-->
+
+<!-- Modal Overlay and Container -->
+<div x-data="{}"
+    x-show="$store.stockDetailsModal.isOpen"
+    x-cloak
+    @keydown.escape.window="$store.stockDetailsModal.closeModal()"
+    class="fixed inset-0 z-50 overflow-y-auto"
+    aria-labelledby="modal-title"
+    aria-modal="true"
+    role="dialog"
+>
+    <!-- Backdrop -->
+    <div 
+        x-show="$store.stockDetailsModal.isOpen"
+        x-transition:enter="ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-theme-primary bg-opacity-75 transition-opacity"
+        @click="$store.stockDetailsModal.closeModal()"
+        aria-hidden="true"
+    ></div>
+
+    <!-- Modal Container -->
+    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+        <div 
+            x-show="$store.stockDetailsModal.isOpen"
+            x-transition:enter="ease-out duration-300"
+            x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+            x-transition:leave="ease-in duration-200"
+            x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+            x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            class="relative transform overflow-hidden rounded-lg bg-theme-secondary text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl"
+        >
+            <!-- Modal Header -->
+            <div class="bg-theme-primary px-4 pb-4 pt-5 sm:p-6 sm:pb-4 border-b border-theme-border-primary">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <h3 
+                            id="modal-title"
+                            class="text-2xl font-bold text-theme-text-primary mb-1"
+                            x-text="$store.stockDetailsModal.stockData?.ticker || 'Stock Details'"
+                        >
+                            Stock Details
+                        </h3>
+                        <p 
+                            class="text-lg text-theme-text-secondary"
+                            x-text="$store.stockDetailsModal.stockData?.name || ''"
+                        ></p>
+                    </div>
+                    <button
+                        type="button"
+                        class="rounded-md bg-theme-secondary text-theme-text-tertiary hover:text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-theme-secondary transition-colors"
+                        @click="$store.stockDetailsModal.closeModal()"
+                        aria-label="Close modal"
+                    >
+                        <span class="sr-only">Close</span>
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="bg-theme-secondary px-4 pb-4 pt-5 sm:p-6">
+                <!-- Stock Information Section -->
+                <div class="mb-6">
+                    <h4 class="text-lg font-semibold text-theme-text-primary mb-4">Stock Information</h4>
+                    <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <!-- Exchange -->
+                        <div>
+                            <dt class="text-sm font-medium text-theme-text-tertiary">Exchange</dt>
+                            <dd class="mt-1 text-sm text-theme-text-primary" x-text="$store.stockDetailsModal.stockData?.exchange_name || 'N/A'"></dd>
+                        </div>
+
+                        <!-- Sector -->
+                        <div>
+                            <dt class="text-sm font-medium text-theme-text-tertiary">Sector</dt>
+                            <dd class="mt-1 text-sm text-theme-text-primary" x-text="$store.stockDetailsModal.stockData?.sector || 'N/A'"></dd>
+                        </div>
+
+                        <!-- Country -->
+                        <div>
+                            <dt class="text-sm font-medium text-theme-text-tertiary">Country</dt>
+                            <dd class="mt-1 text-sm text-theme-text-primary" x-text="$store.stockDetailsModal.stockData?.country || 'N/A'"></dd>
+                        </div>
+
+                        <!-- Industry (if available) -->
+                        <template x-if="$store.stockDetailsModal.stockData?.industry">
+                            <div>
+                                <dt class="text-sm font-medium text-theme-text-tertiary">Industry</dt>
+                                <dd class="mt-1 text-sm text-theme-text-primary" x-text="$store.stockDetailsModal.stockData.industry"></dd>
+                            </div>
+                        </template>
+                    </dl>
+
+                    <!-- Description (if available) -->
+                    <template x-if="$store.stockDetailsModal.stockData?.description">
+                        <div class="mt-4">
+                            <dt class="text-sm font-medium text-theme-text-tertiary mb-1">Description</dt>
+                            <dd class="text-sm text-theme-text-secondary" x-text="$store.stockDetailsModal.stockData.description"></dd>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Latest Run Status Section -->
+                <div class="mb-6 border-t border-theme-border-primary pt-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <template x-if="$store.stockDetailsModal.runStatus && $store.stockDetailsModal.runStatus.run_id">
+                            <a 
+                                :href="'{% url 'frontend:ingestion-runs-list' %}' + '?run_id=' + encodeURIComponent($store.stockDetailsModal.runStatus.run_id)"
+                                target="_blank"
+                                class="text-lg font-semibold text-theme-text-primary hover:text-primary-600 transition-colors cursor-pointer"
+                                title="View this run in the runs list"
+                            >
+                                Latest Ingestion Run
+                            </a>
+                        </template>
+                        <template x-if="!$store.stockDetailsModal.runStatus || !$store.stockDetailsModal.runStatus.run_id">
+                            <h4 class="text-lg font-semibold text-theme-text-primary">Latest Ingestion Run</h4>
+                        </template>
+                        <!-- Loading indicator for status -->
+                        <template x-if="$store.stockDetailsModal.loadingStatus">
+                            <svg class="animate-spin h-5 w-5 text-info" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </template>
+                    </div>
+
+                    <!-- Error message -->
+                    <template x-if="$store.stockDetailsModal.error && !$store.stockDetailsModal.loadingStatus">
+                        <div class="mb-4 rounded-md bg-error-light p-4">
+                            <p class="text-sm text-error-text" x-text="$store.stockDetailsModal.error"></p>
+                        </div>
+                    </template>
+
+                    <!-- No run exists -->
+                    <template x-if="!$store.stockDetailsModal.runStatus && !$store.stockDetailsModal.loadingStatus && !$store.stockDetailsModal.error">
+                        <div class="rounded-md bg-theme-tertiary p-4 text-center">
+                            <p class="text-sm text-theme-text-secondary">No ingestion run found for this stock.</p>
+                        </div>
+                    </template>
+
+                    <!-- Run details -->
+                    <template x-if="$store.stockDetailsModal.runStatus && !$store.stockDetailsModal.loadingStatus">
+                        <dl class="grid grid-cols-1 gap-4">
+                            <!-- State Badge -->
+                            <div>
+                                <dt class="text-sm font-medium text-theme-text-tertiary mb-2">Status</dt>
+                                <dd>
+                                    <span 
+                                        class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
+                                        :class="$store.stockDetailsModal.getStateBadgeClass($store.stockDetailsModal.runStatus.state)"
+                                        x-text="$store.stockDetailsModal.runStatus.state || 'N/A'"
+                                    ></span>
+                                </dd>
+                            </div>
+
+                            <!-- Run ID -->
+                            <div>
+                                <dt class="text-sm font-medium text-theme-text-tertiary">Run ID</dt>
+                                <dd class="mt-1 text-sm text-theme-text-primary font-mono" x-text="$store.stockDetailsModal.runStatus.run_id || 'N/A'"></dd>
+                            </div>
+
+                            <!-- Stock ID -->
+                            <div>
+                                <dt class="text-sm font-medium text-theme-text-tertiary">Stock ID</dt>
+                                <dd class="mt-1 text-sm text-theme-text-primary font-mono" x-text="$store.stockDetailsModal.runStatus.stock_id || 'N/A'"></dd>
+                            </div>
+
+                            <!-- Created At -->
+                            <div>
+                                <dt class="text-sm font-medium text-theme-text-tertiary">Created At</dt>
+                                <dd class="mt-1 text-sm text-theme-text-primary" 
+                                    x-text="$store.stockDetailsModal.runStatus.created_at ? dateUtils.formatTimestamp($store.stockDetailsModal.runStatus.created_at) : 'N/A'">
+                                </dd>
+                            </div>
+
+                            <!-- Updated At -->
+                            <div>
+                                <dt class="text-sm font-medium text-theme-text-tertiary">Last Updated</dt>
+                                <dd class="mt-1 text-sm text-theme-text-primary" 
+                                    x-text="$store.stockDetailsModal.runStatus.updated_at ? dateUtils.formatTimestamp($store.stockDetailsModal.runStatus.updated_at) : 'N/A'">
+                                </dd>
+                            </div>
+                        </dl>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-theme-primary px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-theme-border-primary">
+                <!-- Queue New Run Button -->
+                <button
+                    type="button"
+                    class="inline-flex w-full justify-center rounded-md bg-primary-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    :disabled="$store.stockDetailsModal.loadingQueue || $store.stockDetailsModal.loadingStatus"
+                    @click="$store.stockDetailsModal.queueStock($store.stockDetailsModal.stockData?.ticker)"
+                >
+                    <template x-if="$store.stockDetailsModal.loadingQueue">
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </template>
+                    <span x-text="$store.stockDetailsModal.loadingQueue ? 'Queueing...' : 'Queue New Run'">Queue New Run</span>
+                </button>
+                
+                <!-- Close Button -->
+                <button
+                    type="button"
+                    class="mt-3 inline-flex w-full justify-center rounded-md bg-theme-secondary px-3 py-2 text-sm font-semibold text-theme-text-primary shadow-sm ring-1 ring-inset ring-theme-border-primary hover:bg-theme-tertiary sm:mt-0 sm:w-auto transition-colors"
+                    @click="$store.stockDetailsModal.closeModal()"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

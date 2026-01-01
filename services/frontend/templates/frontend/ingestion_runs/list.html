@@ -1,0 +1,357 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Ingestion Runs - Stock ETL Dashboard{% endblock %}
+
+{% block content %}
+<div 
+    x-data="{ 
+        init() {
+            // Read URL query parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialFilters = {};
+            
+            // Map URL parameters to filter keys
+            // bulk_queue_run and state are the main ones used
+            if (urlParams.has('bulk_queue_run')) {
+                initialFilters.bulk_queue_run = urlParams.get('bulk_queue_run');
+            }
+            if (urlParams.has('state')) {
+                initialFilters.state = urlParams.get('state');
+            }
+            if (urlParams.has('run_id')) {
+                initialFilters.run_id = urlParams.get('run_id');
+            }
+            
+            const hasInitialFilters = Object.keys(initialFilters).length > 0;
+            
+            // Initialize stores
+            if (window.Alpine && Alpine.store('runsList')) {
+                // Always call init - it will apply initial filters if provided
+                Alpine.store('runsList').init(hasInitialFilters ? initialFilters : null);
+            }
+            if (window.Alpine && Alpine.store('runDetailsModal')) {
+                Alpine.store('runDetailsModal').init();
+            }
+            
+            // Load runs on page load (with filters if provided)
+            this.$nextTick(() => {
+                if (Alpine.store('runsList')) {
+                    if (hasInitialFilters) {
+                        // Filters are already set in init(), just apply them and load runs
+                        Alpine.store('runsList').applyFilters();
+                    } else {
+                        // Load normally without filters
+                        Alpine.store('runsList').loadRuns();
+                    }
+                }
+            });
+        }
+    }"
+    class="max-w-7xl mx-auto"
+>
+    <!-- Page Header -->
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-theme-primary mb-2">Ingestion Runs</h1>
+        <p class="text-theme-secondary">Browse and filter all ingestion runs</p>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="bg-theme-primary border border-theme-primary rounded-lg p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-theme-primary">Filters</h2>
+            <button
+                type="button"
+                x-show="$store.runsList.hasActiveFilters()"
+                @click="$store.runsList.clearFilters()"
+                class="text-sm text-info hover:text-info-dark font-medium"
+                aria-label="Clear all filters"
+            >
+                Clear All
+            </button>
+        </div>
+
+        <form 
+            @submit.prevent="$store.runsList.applyFilters()"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        >
+            <!-- Ticker Filter -->
+            <div>
+                <label for="filter-ticker" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Ticker (Exact)
+                </label>
+                <input
+                    type="text"
+                    id="filter-ticker"
+                    x-model="$store.runsList.filters.ticker"
+                    placeholder="e.g., AAPL"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by exact ticker symbol"
+                />
+            </div>
+
+            <!-- Ticker Contains Filter -->
+            <div>
+                <label for="filter-ticker-contains" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Ticker (Contains)
+                </label>
+                <input
+                    type="text"
+                    id="filter-ticker-contains"
+                    x-model="$store.runsList.filters.ticker__icontains"
+                    placeholder="e.g., app"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by ticker contains"
+                />
+            </div>
+
+            <!-- State Filter -->
+            <div>
+                <label for="filter-state" class="block text-sm font-medium text-theme-secondary mb-1">
+                    State
+                </label>
+                <select
+                    id="filter-state"
+                    x-model="$store.runsList.filters.state"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by ingestion state"
+                >
+                    <option value="">All States</option>
+                    <option value="QUEUED_FOR_FETCH">Queued for Fetch</option>
+                    <option value="FETCHING">Fetching</option>
+                    <option value="FETCHED">Fetched</option>
+                    <option value="QUEUED_FOR_DELTA">Queued for Delta</option>
+                    <option value="DELTA_RUNNING">Delta Running</option>
+                    <option value="DELTA_FINISHED">Delta Finished</option>
+                    <option value="DONE">Done</option>
+                    <option value="FAILED">Failed</option>
+                </select>
+            </div>
+
+            <!-- Requested By Filter -->
+            <div>
+                <label for="filter-requested-by" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Requested By (Exact)
+                </label>
+                <input
+                    type="text"
+                    id="filter-requested-by"
+                    x-model="$store.runsList.filters.requested_by"
+                    placeholder="e.g., user@example.com"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by exact requester"
+                />
+            </div>
+
+            <!-- Requested By Contains Filter -->
+            <div>
+                <label for="filter-requested-by-contains" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Requested By (Contains)
+                </label>
+                <input
+                    type="text"
+                    id="filter-requested-by-contains"
+                    x-model="$store.runsList.filters.requested_by__icontains"
+                    placeholder="e.g., user"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by requester contains"
+                />
+            </div>
+
+            <!-- Created After Filter -->
+            <div>
+                <label for="filter-created-after" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Created After
+                </label>
+                <input
+                    type="date"
+                    id="filter-created-after"
+                    x-model="$store.runsList.filters.created_after"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs created after date"
+                />
+            </div>
+
+            <!-- Created Before Filter -->
+            <div>
+                <label for="filter-created-before" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Created Before
+                </label>
+                <input
+                    type="date"
+                    id="filter-created-before"
+                    x-model="$store.runsList.filters.created_before"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter runs created before date"
+                />
+            </div>
+
+            <!-- Is Terminal Filter -->
+            <div>
+                <label for="filter-is-terminal" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Terminal Status
+                </label>
+                <select
+                    id="filter-is-terminal"
+                    x-model="$store.runsList.filters.is_terminal"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by terminal status"
+                >
+                    <option value="">All</option>
+                    <option value="true">Terminal (DONE/FAILED)</option>
+                    <option value="false">Non-Terminal</option>
+                </select>
+            </div>
+
+            <!-- Is In Progress Filter -->
+            <div>
+                <label for="filter-is-in-progress" class="block text-sm font-medium text-theme-secondary mb-1">
+                    In Progress Status
+                </label>
+                <select
+                    id="filter-is-in-progress"
+                    x-model="$store.runsList.filters.is_in_progress"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by in-progress status"
+                >
+                    <option value="">All</option>
+                    <option value="true">In Progress</option>
+                    <option value="false">Not In Progress</option>
+                </select>
+            </div>
+
+            <!-- Bulk Queue Run Filter -->
+            <div>
+                <label for="filter-bulk-queue-run" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Bulk Queue Run ID
+                </label>
+                <input
+                    type="text"
+                    id="filter-bulk-queue-run"
+                    x-model="$store.runsList.filters.bulk_queue_run"
+                    placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono text-sm"
+                    aria-label="Filter by bulk queue run UUID"
+                />
+            </div>
+
+            <!-- Apply Filters Button -->
+            <div class="md:col-span-2 lg:col-span-3 flex justify-end">
+                <button
+                    type="submit"
+                    :disabled="$store.runsList.loading"
+                    class="px-6 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Apply filters"
+                >
+                    <span x-show="!$store.runsList.loading">Apply Filters</span>
+                    <span x-show="$store.runsList.loading" class="flex items-center">
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading...
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="$store.runsList.loading && $store.runsList.runs.length === 0" class="text-center py-12">
+        <svg class="animate-spin h-12 w-12 text-info mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="text-theme-secondary font-medium">Loading runs...</p>
+    </div>
+
+    <!-- Error State -->
+    <div x-show="$store.runsList.error && !$store.runsList.loading" class="mb-6 rounded-md bg-error-light border border-error p-4">
+        <div class="flex items-start">
+            <svg class="w-5 h-5 text-error mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+                <p class="text-sm font-semibold text-error-text mb-1">Error Loading Runs</p>
+                <p class="text-sm text-error-text" x-text="$store.runsList.error"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="!$store.runsList.loading && !$store.runsList.error && $store.runsList.runs.length === 0" class="text-center py-12">
+        <svg class="w-16 h-16 text-theme-tertiary mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p class="text-lg font-medium text-theme-primary mb-1">No runs found</p>
+        <p class="text-theme-secondary" x-show="$store.runsList.hasActiveFilters()">
+            Try adjusting your filters or 
+            <button 
+                @click="$store.runsList.clearFilters()"
+                class="text-info hover:text-info-dark font-medium underline"
+            >
+                clear all filters
+            </button>
+        </p>
+        <p class="text-theme-secondary" x-show="!$store.runsList.hasActiveFilters()">
+            No ingestion runs are available at this time.
+        </p>
+    </div>
+
+    <!-- Runs Grid -->
+    <div 
+        x-show="!$store.runsList.loading && $store.runsList.runs.length > 0"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6"
+    >
+        <template x-for="run in $store.runsList.runs" :key="run.id">
+            {% include 'components/ingestion_runs/card.html' %}
+        </template>
+    </div>
+
+    <!-- Pagination Controls -->
+    <div 
+        x-show="!$store.runsList.loading && $store.runsList.runs.length > 0"
+        class="flex items-center justify-between border-t border-theme-primary pt-6"
+    >
+        <div class="flex items-center gap-2">
+            <button
+                type="button"
+                @click="$store.runsList.previousPage()"
+                :disabled="!$store.runsList.previousCursor || $store.runsList.loading"
+                class="px-4 py-2 bg-theme-secondary border border-theme-primary text-theme-primary font-medium rounded-md hover:bg-theme-tertiary transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Go to previous page"
+            >
+                Previous
+            </button>
+            <button
+                type="button"
+                @click="$store.runsList.nextPage()"
+                :disabled="!$store.runsList.nextCursor || $store.runsList.loading"
+                class="px-4 py-2 bg-theme-secondary border border-theme-primary text-theme-primary font-medium rounded-md hover:bg-theme-tertiary transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Go to next page"
+            >
+                Next
+            </button>
+        </div>
+        <div class="text-sm text-theme-secondary">
+            <span x-show="$store.runsList.loading">Loading...</span>
+            <span x-show="!$store.runsList.loading">
+                Showing <span x-text="$store.runsList.runs.length"></span> run<span x-show="$store.runsList.runs.length !== 1">s</span>
+            </span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'components/ingestion_runs/details_modal.html' %}
+{% endblock %}
+
+{% block extra_js %}
+    <!-- Runs List Store -->
+    <script src="{% static 'js/stores/ingestion_runs/listStore.js' %}"></script>
+    
+    <!-- Run Details Modal Store -->
+    <script src="{% static 'js/stores/ingestion_runs/detailsModalStore.js' %}"></script>
+{% endblock %}
+
