@@ -1,0 +1,148 @@
+<!-- Stock Card Component -->
+<!-- 
+  Reusable card component for displaying stock information.
+  Designed to be used within an Alpine.js x-for loop.
+  
+  Usage:
+  <template x-for="stock in stocks" :key="stock.ticker">
+    { include 'components/stocks/card.html' }
+  </template>
+  
+  The stock data is accessed from the Alpine.js scope (current loop item).
+-->
+<div 
+    class="bg-theme-primary border border-theme-primary rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 flex flex-col h-full"
+    role="article"
+    aria-label="Stock information card"
+>
+    <!-- Header: Ticker and Name -->
+    <div class="mb-4">
+        <!-- Ticker (Prominently Displayed) -->
+        <h3 
+            class="text-2xl font-bold text-theme-primary mb-1"
+            x-text="stock?.ticker || 'N/A'"
+            aria-label="Stock ticker symbol"
+        >
+        </h3>
+        
+        <!-- Company Name -->
+        <p 
+            class="text-lg text-theme-secondary font-medium"
+            x-text="stock?.name || 'Name not available'"
+            aria-label="Company name"
+        >
+        </p>
+    </div>
+
+    <!-- Stock Information Grid -->
+    <div class="flex-1 space-y-3 mb-4">
+        <!-- Exchange Name -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Exchange label">Exchange:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1"
+                    x-text="stock?.exchange_name || 'N/A'"
+                    aria-label="Exchange name"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Sector -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Sector label">Sector:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1"
+                    x-text="stock?.sector || 'N/A'"
+                    aria-label="Sector name"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Country -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Country label">Country:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1"
+                    x-text="stock?.country || 'N/A'"
+                    aria-label="Country code"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Industry (if available) -->
+        <template x-if="stock?.industry">
+            <div class="flex items-start gap-2">
+                <svg 
+                    class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <span class="text-sm text-theme-tertiary" aria-label="Industry label">Industry:</span>
+                    <span 
+                        class="text-sm text-theme-primary font-medium ml-1"
+                        x-text="stock.industry"
+                        aria-label="Industry name"
+                    ></span>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Description (Truncated) -->
+    <div class="mb-4" x-show="stock?.description">
+        <p 
+            class="text-sm text-theme-secondary line-clamp-3"
+            x-text="stock?.description || ''"
+            aria-label="Company description"
+        >
+        </p>
+    </div>
+
+    <!-- Footer: View Details Button -->
+    <div class="mt-auto pt-4 border-t border-theme-primary">
+        <button
+            type="button"
+            class="w-full px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-theme-primary"
+            aria-label="View details for stock"
+            @click="$store.stockDetailsModal.openModal(stock)"
+        >
+            View Details
+        </button>
+    </div>
+</div>
+

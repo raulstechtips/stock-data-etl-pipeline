@@ -1,0 +1,268 @@
+<!-- Bulk Queue Run Card Component -->
+<!-- 
+  Reusable card component for displaying bulk queue run information.
+  Designed to be used within an Alpine.js x-for loop.
+  
+  Usage:
+  <template x-for="run in bulkQueueRuns" :key="run.id">
+    { include 'components/bulk_queue_runs/card.html' }
+  </template>
+  
+  The run data is accessed from the Alpine.js scope (current loop item).
+-->
+<div 
+    class="bg-theme-primary border border-theme-primary rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 flex flex-col h-full"
+    role="article"
+    aria-label="Bulk queue run information card"
+>
+    <!-- Header: Requested By (Prominently Displayed) -->
+    <div class="mb-4">
+        <!-- Requested By (Prominently Displayed) -->
+        <h3 
+            class="text-2xl font-bold text-theme-primary mb-2 break-all"
+            x-text="run?.requested_by || 'N/A'"
+            aria-label="Requester email"
+        >
+        </h3>
+        
+        <!-- Status Badge -->
+        <div class="mb-2">
+            <span 
+                class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
+                :class="run?.completed_at ? 'bg-success text-success-text' : 
+                        run?.started_at ? 'bg-info text-info-text' : 
+                        'bg-warning text-warning-text'"
+                x-text="run?.completed_at ? 'Completed' : 
+                        run?.started_at ? 'In Progress' : 
+                        'Not Started'"
+                aria-label="Bulk queue run status"
+            ></span>
+        </div>
+    </div>
+
+    <!-- Run Information -->
+    <div class="flex-1 space-y-3 mb-4">
+        <!-- Run ID -->
+        <div class="flex items-start gap-2">
+            <svg 
+                class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="text-sm text-theme-tertiary" aria-label="Run ID label">Run ID:</span>
+                <span 
+                    class="text-sm text-theme-primary font-medium ml-1 font-mono break-all"
+                    x-text="run?.id || 'N/A'"
+                    aria-label="Run ID value"
+                ></span>
+            </div>
+        </div>
+
+        <!-- Stock Counts Section -->
+        <div class="pt-2 border-t border-theme-primary">
+            <h4 class="text-sm font-semibold text-theme-primary mb-2" aria-label="Stock counts section">Stock Counts</h4>
+            <div class="grid grid-cols-2 gap-3">
+                <!-- Total Stocks -->
+                <div class="flex items-center gap-2">
+                    <svg 
+                        class="w-4 h-4 text-theme-tertiary flex-shrink-0" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <span class="text-xs text-theme-tertiary" aria-label="Total stocks label">Total:</span>
+                        <span 
+                            class="text-sm text-theme-primary font-medium ml-1"
+                            x-text="run?.total_stocks ?? 0"
+                            aria-label="Total stocks value"
+                        ></span>
+                    </div>
+                </div>
+
+                <!-- Queued Count -->
+                <div class="flex items-center gap-2">
+                    <svg 
+                        class="w-4 h-4 text-success flex-shrink-0" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <span class="text-xs text-theme-tertiary" aria-label="Queued count label">Queued:</span>
+                        <span 
+                            class="text-sm text-success font-medium ml-1"
+                            x-text="run?.queued_count ?? 0"
+                            aria-label="Queued count value"
+                        ></span>
+                    </div>
+                </div>
+
+                <!-- Skipped Count -->
+                <div class="flex items-center gap-2">
+                    <svg 
+                        class="w-4 h-4 text-warning flex-shrink-0" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <span class="text-xs text-theme-tertiary" aria-label="Skipped count label">Skipped:</span>
+                        <span 
+                            class="text-sm text-warning font-medium ml-1"
+                            x-text="run?.skipped_count ?? 0"
+                            aria-label="Skipped count value"
+                        ></span>
+                    </div>
+                </div>
+
+                <!-- Error Count (Prominently Displayed if > 0) -->
+                <div class="flex items-center gap-2" :class="run?.error_count > 0 ? 'col-span-2' : ''">
+                    <svg 
+                        class="w-4 h-4 flex-shrink-0"
+                        :class="run?.error_count > 0 ? 'text-error' : 'text-theme-tertiary'"
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <span 
+                            class="text-xs font-medium"
+                            :class="run?.error_count > 0 ? 'text-error' : 'text-theme-tertiary'"
+                            aria-label="Error count label"
+                        >Errors:</span>
+                        <span 
+                            class="text-sm font-bold ml-1"
+                            :class="run?.error_count > 0 ? 'text-error' : 'text-theme-primary'"
+                            x-text="run?.error_count ?? 0"
+                            aria-label="Error count value"
+                        ></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Count Prominent Display (if error_count > 0) -->
+            <template x-if="run?.error_count > 0">
+                <div class="mt-3 pt-3 border-t border-error/20 bg-error/10 rounded-md p-3">
+                    <div class="flex items-center gap-2">
+                        <svg 
+                            class="w-5 h-5 text-error flex-shrink-0" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div class="flex-1">
+                            <span class="text-sm font-bold text-error" aria-label="Error count prominent label">
+                                <span x-text="run.error_count"></span> error<span x-show="run.error_count !== 1">s</span> occurred
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Timestamps Section -->
+        <div class="pt-2 border-t border-theme-primary space-y-2">
+            <!-- Created At -->
+            <div class="flex items-start gap-2">
+                <svg 
+                    class="w-5 h-5 text-theme-tertiary mt-0.5 flex-shrink-0" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <span class="text-sm text-theme-tertiary" aria-label="Created at label">Created:</span>
+                    <span 
+                        class="text-sm text-theme-primary font-medium ml-1"
+                        x-text="run?.created_at ? window.dateUtils.formatTimestamp(run.created_at) : 'N/A'"
+                        aria-label="Creation timestamp"
+                    ></span>
+                </div>
+            </div>
+
+            <!-- Started At (if available) -->
+            <template x-if="run?.started_at">
+                <div class="flex items-start gap-2">
+                    <svg 
+                        class="w-5 h-5 text-info mt-0.5 flex-shrink-0" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <span class="text-sm text-theme-tertiary" aria-label="Started at label">Started:</span>
+                        <span 
+                            class="text-sm text-info font-medium ml-1"
+                            x-text="window.dateUtils.formatTimestamp(run.started_at)"
+                            aria-label="Start timestamp"
+                        ></span>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Completed At (if available) -->
+            <template x-if="run?.completed_at">
+                <div class="flex items-start gap-2">
+                    <svg 
+                        class="w-5 h-5 text-success mt-0.5 flex-shrink-0" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                        <span class="text-sm text-theme-tertiary" aria-label="Completed at label">Completed:</span>
+                        <span 
+                            class="text-sm text-success font-medium ml-1"
+                            x-text="window.dateUtils.formatTimestamp(run.completed_at)"
+                            aria-label="Completion timestamp"
+                        ></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Footer: View Details Button -->
+    <div class="mt-auto pt-4 border-t border-theme-primary">
+        <button
+            type="button"
+            class="w-full px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-theme-primary"
+            @click="$store.bulkQueueRunDetailsModal.openModal(run)"
+            aria-label="View details for bulk queue run"
+        >
+            View Details
+        </button>
+    </div>
+</div>
+

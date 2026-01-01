@@ -1,0 +1,261 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Stocks - Stock ETL Dashboard{% endblock %}
+
+{% block content %}
+<div 
+    x-data="{ 
+        init() {
+            // Initialize stores
+            if (window.Alpine && Alpine.store('stocksList')) {
+                Alpine.store('stocksList').init();
+            }
+            if (window.Alpine && Alpine.store('stockDetailsModal')) {
+                Alpine.store('stockDetailsModal').init();
+            }
+            // Load stocks on page load
+            this.$nextTick(() => {
+                if (Alpine.store('stocksList')) {
+                    Alpine.store('stocksList').loadStocks();
+                }
+            });
+        }
+    }"
+    class="max-w-7xl mx-auto"
+>
+    <!-- Page Header -->
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-theme-primary mb-2">Stocks</h1>
+        <p class="text-theme-secondary">Browse and filter all available stocks</p>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="bg-theme-primary border border-theme-primary rounded-lg p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-theme-primary">Filters</h2>
+            <button
+                type="button"
+                x-show="$store.stocksList.hasActiveFilters()"
+                @click="$store.stocksList.clearFilters()"
+                class="text-sm text-info hover:text-info-dark font-medium"
+                aria-label="Clear all filters"
+            >
+                Clear All
+            </button>
+        </div>
+
+        <form 
+            @submit.prevent="$store.stocksList.applyFilters()"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        >
+            <!-- Ticker Filter -->
+            <div>
+                <label for="filter-ticker" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Ticker (Exact)
+                </label>
+                <input
+                    type="text"
+                    id="filter-ticker"
+                    x-model="$store.stocksList.filters.ticker"
+                    placeholder="e.g., AAPL"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by exact ticker symbol"
+                />
+            </div>
+
+            <!-- Ticker Contains Filter -->
+            <div>
+                <label for="filter-ticker-contains" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Ticker (Contains)
+                </label>
+                <input
+                    type="text"
+                    id="filter-ticker-contains"
+                    x-model="$store.stocksList.filters.ticker__icontains"
+                    placeholder="e.g., app"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by ticker contains"
+                />
+            </div>
+
+            <!-- Sector Filter -->
+            <div>
+                <label for="filter-sector" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Sector (Exact)
+                </label>
+                <input
+                    type="text"
+                    id="filter-sector"
+                    x-model="$store.stocksList.filters.sector"
+                    placeholder="e.g., Technology"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by exact sector"
+                />
+            </div>
+
+            <!-- Sector Contains Filter -->
+            <div>
+                <label for="filter-sector-contains" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Sector (Contains)
+                </label>
+                <input
+                    type="text"
+                    id="filter-sector-contains"
+                    x-model="$store.stocksList.filters.sector__icontains"
+                    placeholder="e.g., tech"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by sector contains"
+                />
+            </div>
+
+            <!-- Exchange Name Filter -->
+            <div>
+                <label for="filter-exchange" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Exchange Name
+                </label>
+                <input
+                    type="text"
+                    id="filter-exchange"
+                    x-model="$store.stocksList.filters.exchange__name"
+                    placeholder="e.g., NASDAQ"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by exchange name"
+                />
+            </div>
+
+            <!-- Country Filter -->
+            <div>
+                <label for="filter-country" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Country Code
+                </label>
+                <input
+                    type="text"
+                    id="filter-country"
+                    x-model="$store.stocksList.filters.country"
+                    placeholder="e.g., US"
+                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    aria-label="Filter by country code"
+                />
+            </div>
+
+            <!-- Apply Filters Button -->
+            <div class="md:col-span-2 lg:col-span-3 flex justify-end">
+                <button
+                    type="submit"
+                    :disabled="$store.stocksList.loading"
+                    class="px-6 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Apply filters"
+                >
+                    <span x-show="!$store.stocksList.loading">Apply Filters</span>
+                    <span x-show="$store.stocksList.loading" class="flex items-center">
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading...
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="$store.stocksList.loading && $store.stocksList.stocks.length === 0" class="text-center py-12">
+        <svg class="animate-spin h-12 w-12 text-info mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="text-theme-secondary font-medium">Loading stocks...</p>
+    </div>
+
+    <!-- Error State -->
+    <div x-show="$store.stocksList.error && !$store.stocksList.loading" class="mb-6 rounded-md bg-error-light border border-error p-4">
+        <div class="flex items-start">
+            <svg class="w-5 h-5 text-error mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+                <p class="text-sm font-semibold text-error-text mb-1">Error Loading Stocks</p>
+                <p class="text-sm text-error-text" x-text="$store.stocksList.error"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="!$store.stocksList.loading && !$store.stocksList.error && $store.stocksList.stocks.length === 0" class="text-center py-12">
+            <svg class="w-16 h-16 text-theme-tertiary mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p class="text-lg font-medium text-theme-primary mb-1">No stocks found</p>
+        <p class="text-theme-secondary" x-show="$store.stocksList.hasActiveFilters()">
+            Try adjusting your filters or 
+            <button 
+                @click="$store.stocksList.clearFilters()"
+                class="text-info hover:text-info-dark font-medium underline"
+            >
+                clear all filters
+            </button>
+        </p>
+        <p class="text-theme-secondary" x-show="!$store.stocksList.hasActiveFilters()">
+            No stocks are available at this time.
+        </p>
+    </div>
+
+    <!-- Stocks Grid -->
+    <div 
+        x-show="!$store.stocksList.loading && $store.stocksList.stocks.length > 0"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-6"
+    >
+        <template x-for="stock in $store.stocksList.stocks" :key="stock.id">
+            {% include 'components/stocks/card.html' %}
+        </template>
+    </div>
+
+    <!-- Pagination Controls -->
+    <div 
+        x-show="!$store.stocksList.loading && $store.stocksList.stocks.length > 0"
+        class="flex items-center justify-between border-t border-theme-primary pt-6"
+    >
+        <div class="flex items-center gap-2">
+            <button
+                type="button"
+                @click="$store.stocksList.previousPage()"
+                :disabled="!$store.stocksList.previousCursor || $store.stocksList.loading"
+                class="px-4 py-2 bg-theme-secondary border border-theme-primary text-theme-primary font-medium rounded-md hover:bg-theme-tertiary transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Go to previous page"
+            >
+                Previous
+            </button>
+            <button
+                type="button"
+                @click="$store.stocksList.nextPage()"
+                :disabled="!$store.stocksList.nextCursor || $store.stocksList.loading"
+                class="px-4 py-2 bg-theme-secondary border border-theme-primary text-theme-primary font-medium rounded-md hover:bg-theme-tertiary transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Go to next page"
+            >
+                Next
+            </button>
+        </div>
+        <div class="text-sm text-theme-secondary">
+            <span x-show="$store.stocksList.loading">Loading...</span>
+            <span x-show="!$store.stocksList.loading">
+                Showing <span x-text="$store.stocksList.stocks.length"></span> stock<span x-show="$store.stocksList.stocks.length !== 1">s</span>
+            </span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'components/stocks/details_modal.html' %}
+{% endblock %}
+
+{% block extra_js %}
+    <!-- Stocks List Store -->
+    <script src="{% static 'js/stores/stocks/listStore.js' %}"></script>
+    
+    <!-- Stock Details Modal Store -->
+    <script src="{% static 'js/stores/stocks/detailsModalStore.js' %}"></script>
+{% endblock %}
+
