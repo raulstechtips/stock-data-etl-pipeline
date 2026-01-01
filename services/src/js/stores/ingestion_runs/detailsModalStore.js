@@ -77,7 +77,12 @@ function defineRunDetailsModalStore() {
             }
             
             // Active processing states (currently working)
-            if (stateUpper === 'FETCHING' || stateUpper === 'TRANSFORMING' || stateUpper === 'LOADING') {
+            if (stateUpper === 'FETCHING' || stateUpper === 'DELTA_RUNNING') {
+                return 'bg-info text-info-text';
+            }
+            
+            // Intermediate completion states
+            if (stateUpper === 'FETCHED' || stateUpper === 'DELTA_FINISHED') {
                 return 'bg-info text-info-text';
             }
             
