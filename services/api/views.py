@@ -849,6 +849,8 @@ class StockDataView(APIView):
     The response is the raw JSON bytes with no transformation or parsing.
     """
     
+    permission_classes = [AllowAny]
+
     def get(self, request: Request, ticker: str) -> HttpResponse:
         """
         Get the latest raw stock data JSON for a specific ticker.
@@ -1023,14 +1025,13 @@ class StockDataView(APIView):
                 try:
                     json.loads(json_bytes)
                 except json.JSONDecodeError as e:
-                    logger.error(
+                    logger.exception(
                         "Invalid JSON data in file",
                         extra={
                             'ticker': normalized_ticker,
                             'run_id': str(done_run.id),
                             'bucket': bucket_name,
-                            'key': object_key,
-                            'error': str(e)
+                            'key': object_key
                         }
                     )
                     return Response(
@@ -1095,7 +1096,7 @@ class StockDataView(APIView):
                         status=status.HTTP_404_NOT_FOUND
                     )
                 elif error_code in ['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'AccessDenied']:
-                    logger.error(
+                    logger.exception(
                         "S3/MinIO authentication error",
                         extra={
                             'ticker': normalized_ticker,
@@ -1118,7 +1119,7 @@ class StockDataView(APIView):
                         status=status.HTTP_401_UNAUTHORIZED
                     )
                 elif error_code == 'NoSuchBucket':
-                    logger.error(
+                    logger.exception(
                         "S3 bucket not found",
                         extra={
                             'ticker': normalized_ticker,
@@ -1143,7 +1144,7 @@ class StockDataView(APIView):
                         status=status.HTTP_404_NOT_FOUND
                     )
                 else:
-                    logger.error(
+                    logger.exception(
                         "S3/MinIO error",
                         extra={
                             'ticker': normalized_ticker,
@@ -1167,14 +1168,12 @@ class StockDataView(APIView):
                     )
             
             except MinioException as e:
-                logger.error(
+                logger.exception(
                     "MinIO connection error",
                     extra={
                         'ticker': normalized_ticker,
-                        'run_id': str(done_run.id),
-                        'error': str(e)
+                        'run_id': str(done_run.id)
                     },
-                    exc_info=True
                 )
                 return Response(
                     {
@@ -1200,11 +1199,10 @@ class StockDataView(APIView):
                         pass  # Ignore errors during cleanup
         
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Unexpected error retrieving stock data",
                 extra={
                     'ticker': normalized_ticker,
-                    'error': str(e)
                 },
                 exc_info=True
             )
