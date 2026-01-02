@@ -11,6 +11,8 @@ This module contains the API views for:
 
 import logging
 
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status
 from rest_framework.generics import ListAPIView
@@ -31,6 +33,7 @@ from .paginator import StandardCursorPagination
 logger = logging.getLogger(__name__)
 
 
+@method_decorator(cache_page(None, key_prefix='api:exchange-list'), name='dispatch')
 class ExchangeListView(ListAPIView):
     """
     API endpoint for listing all exchanges.
@@ -55,6 +58,12 @@ class ExchangeListView(ListAPIView):
         GET /api/exchanges?name=NASDAQ
         GET /api/exchanges?name__icontains=nas
         GET /api/exchanges?name=NYSE&name__icontains=Y
+    
+    Caching:
+        Responses are cached indefinitely (no expiry) using cache_page decorator.
+        Each paginated page (with different cursor values) is cached separately with
+        unique cache keys. Cache is automatically invalidated when Exchange or Stock
+        models are created, updated, or deleted via Django signals.
     """
     serializer_class = ExchangeSerializer
     pagination_class = StandardCursorPagination
@@ -63,6 +72,7 @@ class ExchangeListView(ListAPIView):
     queryset = Exchange.objects.all().order_by('-created_at')
 
 
+@method_decorator(cache_page(None, key_prefix='api:ticker-list'), name='dispatch')
 class TickerListView(ListAPIView):
     """
     API endpoint for listing all stocks.
@@ -71,6 +81,13 @@ class TickerListView(ListAPIView):
     
     Returns a paginated list of all stocks with cursor-based pagination.
     Supports filtering by ticker, sector, exchange, and country.
+    
+    Caching:
+        Responses are cached indefinitely (no expiry) using cache_page decorator.
+        Each paginated page (with different cursor values) is cached separately with
+        unique cache keys. Cache is automatically invalidated when Exchange or Stock
+        models are created, updated, or deleted via Django signals.
+        Handles large result sets (20k+ stocks) - each paginated page is cached separately.
     """
     serializer_class = StockSerializer
     pagination_class = StandardCursorPagination

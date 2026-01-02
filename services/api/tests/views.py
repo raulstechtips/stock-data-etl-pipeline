@@ -357,6 +357,9 @@ class TickerListAPITest(APITestCase):
         )
         self.client.force_authenticate(user=self.user)
         
+        # Clear cache before each test to ensure test isolation
+        cache.clear()
+        
         # Create multiple stocks for pagination testing
         Stock.objects.create(ticker='AAPL', name='Apple Inc.')
         Stock.objects.create(ticker='GOOGL', name='Alphabet Inc.')
@@ -1156,6 +1159,9 @@ class ExchangeListAPITest(APITestCase):
             password='testpass123'
         )
         self.client.force_authenticate(user=self.user)
+        
+        # Clear cache before each test to ensure test isolation
+        cache.clear()
         
         # Create multiple exchanges for testing
         self.exchange1 = Exchange.objects.create(name='NASDAQ')

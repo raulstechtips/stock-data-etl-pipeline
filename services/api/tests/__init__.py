@@ -42,6 +42,7 @@ from .auth import (
     AuthenticationRequiredAPITest,
     AuthenticatedAccessAPITest,
 )
+from .cache_invalidation import ExchangeListViewCacheTest, TickerListViewCacheTest, CacheInvalidationUtilityTest, CacheInvalidationSignalsTest
 
 __all__ = [
     'ExchangeModelTest',
@@ -72,5 +73,9 @@ __all__ = [
     'AuthenticationRequiredAPITest',
     'AuthenticatedAccessAPITest',
     'StockDataAPITest',
-    'ExchangeListAPITest'
+    'ExchangeListAPITest',
+    'ExchangeListViewCacheTest', 
+    'TickerListViewCacheTest', 
+    'CacheInvalidationUtilityTest', 
+    'CacheInvalidationSignalsTest'
 ]
