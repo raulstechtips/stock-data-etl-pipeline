@@ -968,12 +968,9 @@ class StockDataView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
-            # Parse S3 URI using urlparse
-            parsed_s3_uri = urlparse(raw_data_uri)
-            bucket_name = parsed_s3_uri.netloc
-            object_key = parsed_s3_uri.path.lstrip('/')
-            
-            if not bucket_name or not object_key:
+            # Extract bucket and key from URI
+            uri_parts = raw_data_uri[5:].split('/', 1)
+            if len(uri_parts) != 2:
                 logger.error(
                     "Invalid S3 URI format - cannot parse bucket/key",
                     extra={
@@ -997,6 +994,8 @@ class StockDataView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
+            bucket_name, object_key = uri_parts
+            
             # Initialize MinIO client using base S3 credentials
             parsed = urlparse(settings.AWS_S3_ENDPOINT_URL)
             endpoint = parsed.netloc or parsed.path
@@ -1008,7 +1007,9 @@ class StockDataView(APIView):
                 secret_key=settings.AWS_SECRET_ACCESS_KEY,
                 secure=secure
             )
-
+            
+            # Fetch JSON file from S3/MinIO
+            minio_response = None
             try:
                 minio_response = client.get_object(bucket_name, object_key)
                 
