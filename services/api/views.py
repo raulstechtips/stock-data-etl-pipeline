@@ -1195,8 +1195,15 @@ class StockDataView(APIView):
                     try:
                         minio_response.close()
                         minio_response.release_conn()
-                    except Exception:
-                        pass  # Ignore errors during cleanup
+                    except Exception as cleanup_error:
+                        logger.debug(
+                            "Error during MinIO response cleanup",
+                            extra={
+                                'error': str(cleanup_error),
+                                'ticker': normalized_ticker,
+                                'run_id': str(done_run.id)
+                            }
+                        )
         
         except Exception as e:
             logger.exception(
