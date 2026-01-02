@@ -1,0 +1,177 @@
+<!-- Queue All Stocks Modal Component -->
+<!-- 
+  Modal component for queueing all stocks with optional exchange filtering.
+  Uses Alpine.js store for state management.
+  
+  Usage:
+  { include 'components/bulk_queue_runs/queue_all_modal.html' }
+  
+  The modal is controlled via the queueAllModal store.
+-->
+
+<!-- Modal Overlay and Container -->
+<div x-data="{}"
+    x-show="$store.queueAllModal.isOpen"
+    x-cloak
+    @keydown.escape.window="$store.queueAllModal.closeModal()"
+    class="fixed inset-0 z-50 overflow-y-auto"
+    aria-labelledby="modal-title"
+    aria-modal="true"
+    role="dialog"
+>
+    <!-- Backdrop -->
+    <div 
+        x-show="$store.queueAllModal.isOpen"
+        x-transition:enter="ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-theme-primary bg-opacity-75 transition-opacity"
+        @click="$store.queueAllModal.closeModal()"
+        aria-hidden="true"
+    ></div>
+
+    <!-- Modal Container -->
+    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+        <div 
+            x-show="$store.queueAllModal.isOpen"
+            x-transition:enter="ease-out duration-300"
+            x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+            x-transition:leave="ease-in duration-200"
+            x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+            x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            class="relative transform overflow-hidden rounded-lg bg-theme-secondary text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg max-h-[90vh] overflow-y-auto"
+        >
+            <!-- Modal Header -->
+            <div class="bg-theme-primary px-4 pb-4 pt-5 sm:p-6 sm:pb-4 border-b border-theme-border-primary">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <h3 
+                            id="modal-title"
+                            class="text-2xl font-bold text-theme-text-primary mb-1"
+                        >
+                            Queue All Stocks
+                        </h3>
+                        <p class="text-sm text-theme-text-secondary">
+                            Queue all stocks for ingestion, optionally filtered by exchange
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        class="rounded-md bg-theme-secondary text-theme-text-tertiary hover:text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-theme-secondary transition-colors"
+                        @click="$store.queueAllModal.closeModal()"
+                        aria-label="Close modal"
+                    >
+                        <span class="sr-only">Close</span>
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="bg-theme-secondary px-4 pb-4 pt-5 sm:p-6">
+                <!-- Loading State (Fetching Exchanges) -->
+                <div x-show="$store.queueAllModal.loadingExchanges" class="flex items-center justify-center py-8">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="animate-spin h-8 w-8 text-info" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p class="text-sm text-theme-text-tertiary">Loading exchanges...</p>
+                    </div>
+                </div>
+
+                <!-- Loading State (Submitting) -->
+                <div x-show="$store.queueAllModal.submitting" class="flex items-center justify-center py-8">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="animate-spin h-8 w-8 text-info" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p class="text-sm text-theme-text-tertiary">Submitting request...</p>
+                    </div>
+                </div>
+
+                <!-- Form -->
+                <form 
+                    x-show="!$store.queueAllModal.loadingExchanges && !$store.queueAllModal.submitting"
+                    @submit.prevent="$store.queueAllModal.submitQueueAll()"
+                    class="space-y-4"
+                >
+                    <!-- Exchange Dropdown -->
+                    <div>
+                        <label for="exchange-select" class="block text-sm font-medium text-theme-text-secondary mb-1">
+                            Exchange
+                        </label>
+                        <select
+                            id="exchange-select"
+                            x-model="$store.queueAllModal.selectedExchange"
+                            :disabled="$store.queueAllModal.submitting"
+                            class="w-full px-3 py-2 border border-theme-border-primary rounded-md bg-theme-primary text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label="Select exchange to filter stocks by"
+                        >
+                            <option value="">All Exchanges</option>
+                            <template x-for="exchange in $store.queueAllModal.exchanges" :key="exchange.id">
+                                <option :value="exchange.name" x-text="exchange.name"></option>
+                            </template>
+                        </select>
+                        <p class="mt-1 text-xs text-theme-text-tertiary">
+                            Select an exchange to filter stocks, or leave as "All Exchanges" to queue all stocks
+                        </p>
+                    </div>
+
+                    <!-- Requested By Input -->
+                    <div>
+                        <label for="requested-by" class="block text-sm font-medium text-theme-text-secondary mb-1">
+                            Requested By <span class="text-theme-text-tertiary">(optional)</span>
+                        </label>
+                        <input
+                            type="text"
+                            id="requested-by"
+                            x-model="$store.queueAllModal.requestedBy"
+                            :disabled="$store.queueAllModal.submitting"
+                            placeholder="e.g., admin@example.com"
+                            class="w-full px-3 py-2 border border-theme-border-primary rounded-md bg-theme-primary text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label="Enter requester identifier (optional)"
+                        />
+                        <p class="mt-1 text-xs text-theme-text-tertiary">
+                            Optional identifier for who is requesting this operation
+                        </p>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-theme-primary px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-theme-border-primary">
+                <!-- Submit Button -->
+                <button
+                    type="button"
+                    x-show="!$store.queueAllModal.submitting"
+                    @click="$store.queueAllModal.submitQueueAll()"
+                    :disabled="$store.queueAllModal.submitting || $store.queueAllModal.loadingExchanges"
+                    class="mt-3 inline-flex w-full justify-center items-center rounded-md bg-primary-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed sm:mt-0 sm:w-auto transition-colors"
+                    aria-label="Submit queue all request"
+                >
+                    Queue All Stocks
+                </button>
+                
+                <!-- Close Button -->
+                <button
+                    type="button"
+                    @click="$store.queueAllModal.closeModal()"
+                    :disabled="$store.queueAllModal.submitting"
+                    class="mt-3 inline-flex w-full justify-center rounded-md bg-theme-secondary px-3 py-2 text-sm font-semibold text-theme-text-primary shadow-sm ring-1 ring-inset ring-theme-border-primary hover:bg-theme-tertiary disabled:opacity-50 disabled:cursor-not-allowed sm:mt-0 sm:w-auto transition-colors"
+                    aria-label="Close modal"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
