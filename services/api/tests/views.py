@@ -1524,3 +1524,494 @@ class BulkQueueRunStatsDetailAPITest(APITestCase):
         
         # Verify total matches number of states
         self.assertEqual(stats['total'], len(IngestionState.choices))
+
+
+class StockDataAPITest(APITestCase):
+    """Tests for the GET /api/data/all-data/<ticker> endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
+        self.stock = Stock.objects.create(ticker='AAPL')
+        self.test_json_data = b'{"ticker": "AAPL", "data": "test"}'
+        self.test_json_data_str = '{"ticker": "AAPL", "data": "test"}'
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_success(self, mock_minio_class):
+        """Test successful retrieval of stock data."""
+        # Create DONE run with raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO client
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.read.return_value = self.test_json_data
+        mock_client.get_object.return_value = mock_response
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, self.test_json_data)
+        self.assertEqual(response['content-type'], 'application/json')
+        
+        # Verify MinIO was called correctly
+        mock_minio_class.assert_called_once()
+        mock_client.get_object.assert_called_once_with('test-bucket', 'AAPL/123.json')
+        mock_response.read.assert_called_once()
+        # Response should be closed once in the finally block
+        self.assertGreaterEqual(mock_response.close.call_count, 1)
+        self.assertGreaterEqual(mock_response.release_conn.call_count, 1)
+
+    def test_get_stock_data_stock_not_found(self):
+        """Test stock not found (404)."""
+        url = reverse('api:stock-data', kwargs={'ticker': 'NONEXISTENT'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'STOCK_NOT_FOUND')
+        self.assertEqual(response.data['error']['details']['ticker'], 'NONEXISTENT')
+
+    def test_get_stock_data_no_done_run(self):
+        """Test no DONE run found (404)."""
+        # Create stock but no DONE runs
+        StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.FETCHING
+        )
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'NO_DONE_RUN_FOUND')
+        self.assertEqual(response.data['error']['details']['ticker'], 'AAPL')
+
+    def test_get_stock_data_no_raw_data_uri(self):
+        """Test DONE run exists but no raw_data_uri (404)."""
+        # Create DONE run with raw_data_uri=None
+        StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri=None
+        )
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'NO_RAW_DATA_URI')
+        self.assertEqual(response.data['error']['details']['ticker'], 'AAPL')
+
+    def test_get_stock_data_empty_raw_data_uri(self):
+        """Test DONE run exists but raw_data_uri is empty string (404)."""
+        # Create DONE run with raw_data_uri=''
+        StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri=''
+        )
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'NO_RAW_DATA_URI')
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_multiple_done_runs_returns_latest(self, mock_minio_class):
+        """Test multiple DONE runs (returns latest)."""
+        import time
+        
+        # Create multiple DONE runs with different created_at times
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/old.json'
+        )
+        time.sleep(0.01)  # Ensure different timestamps
+        
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/latest.json'
+        )
+        
+        # Mock MinIO client
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.read.return_value = self.test_json_data
+        mock_client.get_object.return_value = mock_response
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify latest run's data is returned (by created_at)
+        mock_client.get_object.assert_called_once_with('test-bucket', 'AAPL/latest.json')
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_s3_file_not_found(self, mock_minio_class):
+        """Test S3 file not found (404)."""
+        from minio.error import S3Error
+        
+        # Create DONE run with valid raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO to raise S3Error with NoSuchKey
+        # Create a real S3Error instance with a mock response
+        mock_client = Mock()
+        mock_response = Mock()
+        s3_error = S3Error(
+            response=mock_response,
+            code='NoSuchKey',
+            message='NoSuchKey',
+            resource='resource',
+            request_id='request_id',
+            host_id='host_id',
+            bucket_name='test-bucket',
+            object_name='AAPL/123.json'
+        )
+        mock_client.get_object.side_effect = s3_error
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'DATA_FILE_NOT_FOUND')
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_s3_authentication_error(self, mock_minio_class):
+        """Test S3 authentication error (401)."""
+        from minio.error import S3Error
+        
+        # Create DONE run with valid raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO to raise S3Error with InvalidAccessKeyId
+        mock_client = Mock()
+        mock_response = Mock()
+        s3_error = S3Error(
+            response=mock_response,
+            code='InvalidAccessKeyId',
+            message='InvalidAccessKeyId',
+            resource='resource',
+            request_id='request_id',
+            host_id='host_id',
+            bucket_name='test-bucket',
+            object_name='AAPL/123.json'
+        )
+        mock_client.get_object.side_effect = s3_error
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'STORAGE_AUTHENTICATION_ERROR')
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_s3_bucket_not_found(self, mock_minio_class):
+        """Test S3 bucket not found (404)."""
+        from minio.error import S3Error
+        
+        # Create DONE run with valid raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO to raise S3Error with NoSuchBucket
+        mock_client = Mock()
+        mock_response = Mock()
+        s3_error = S3Error(
+            response=mock_response,
+            code='NoSuchBucket',
+            message='NoSuchBucket',
+            resource='resource',
+            request_id='request_id',
+            host_id='host_id',
+            bucket_name='test-bucket',
+            object_name='AAPL/123.json'
+        )
+        mock_client.get_object.side_effect = s3_error
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'STORAGE_BUCKET_NOT_FOUND')
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_s3_connection_error(self, mock_minio_class):
+        """Test S3 connection error (500)."""
+        from minio.error import MinioException
+        
+        # Create DONE run with valid raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO to raise MinioException
+        mock_client = Mock()
+        mock_client.get_object.side_effect = MinioException('Connection failed')
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'STORAGE_CONNECTION_ERROR')
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_invalid_json(self, mock_minio_class):
+        """Test invalid JSON in file (500)."""
+        # Create DONE run with valid raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO to return invalid JSON bytes
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.read.return_value = b'Invalid JSON {'
+        mock_client.get_object.return_value = mock_response
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'INVALID_JSON_DATA')
+        
+        # Verify response was closed even on error
+        self.assertGreaterEqual(mock_response.close.call_count, 1)
+        self.assertGreaterEqual(mock_response.release_conn.call_count, 1)
+
+    def test_get_stock_data_invalid_s3_uri_format(self):
+        """Test invalid S3 URI format (500)."""
+        # Create DONE run with invalid raw_data_uri (not s3:// format)
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='invalid-uri'
+        )
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'INVALID_DATA_URI')
+
+    def test_get_stock_data_invalid_s3_uri_malformed(self):
+        """Test malformed S3 URI (500)."""
+        # Create DONE run with malformed raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://bucket'  # Missing key part
+        )
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'INVALID_DATA_URI')
+
+    def test_get_stock_data_case_insensitive_ticker(self):
+        """Test case-insensitive ticker lookup."""
+        # Create stock with ticker 'AAPL'
+        # Request data with 'aapl' (lowercase)
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        with patch('api.views.Minio') as mock_minio_class:
+            mock_client = Mock()
+            mock_response = Mock()
+            mock_response.read.return_value = self.test_json_data
+            mock_client.get_object.return_value = mock_response
+            mock_minio_class.return_value = mock_client
+            
+            url = reverse('api:stock-data', kwargs={'ticker': 'aapl'})
+            response = self.client.get(url)
+            
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.content, self.test_json_data)
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_s3_uri_parsing(self, mock_minio_class):
+        """Test S3 URI parsing."""
+        # Create DONE run with raw_data_uri='s3://bucket-name/path/to/file.json'
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://bucket-name/path/to/file.json'
+        )
+        
+        # Mock MinIO client
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.read.return_value = self.test_json_data
+        mock_client.get_object.return_value = mock_response
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify correct bucket and key are extracted and used
+        mock_client.get_object.assert_called_once_with('bucket-name', 'path/to/file.json')
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_response_content_matches_exactly(self, mock_minio_class):
+        """Test response content matches file content exactly."""
+        # Create DONE run with raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO to return specific JSON bytes
+        specific_json = b'{"exact": "content", "no": "transformation"}'
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.read.return_value = specific_json
+        mock_client.get_object.return_value = mock_response
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify response content is exactly the same bytes (no transformation)
+        self.assertEqual(response.content, specific_json)
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_minio_response_closed_on_success(self, mock_minio_class):
+        """Test MinIO response is properly closed on success."""
+        # Create DONE run with raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO client
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.read.return_value = self.test_json_data
+        mock_client.get_object.return_value = mock_response
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify response.close() and response.release_conn() are called
+        self.assertGreaterEqual(mock_response.close.call_count, 1)
+        self.assertGreaterEqual(mock_response.release_conn.call_count, 1)
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_minio_response_closed_on_error(self, mock_minio_class):
+        """Test MinIO response is properly closed even on errors."""
+        # Create DONE run with valid raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO client - get_object succeeds but read fails
+        # Note: read() raising an exception is unusual, but we test cleanup happens
+        mock_client = Mock()
+        mock_response = Mock()
+        # Create an exception that will be raised when read() is called
+        read_exception = Exception("Read error")
+        mock_response.read.side_effect = read_exception
+        mock_client.get_object.return_value = mock_response
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        # Verify response was closed even on error
+        self.assertGreaterEqual(mock_response.close.call_count, 1)
+        self.assertGreaterEqual(mock_response.release_conn.call_count, 1)
+
+    @patch('api.views.Minio')
+    def test_get_stock_data_s3_error_other_codes(self, mock_minio_class):
+        """Test S3Error with other error codes (500)."""
+        from minio.error import S3Error
+        
+        # Create DONE run with valid raw_data_uri
+        run = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.DONE,
+            raw_data_uri='s3://test-bucket/AAPL/123.json'
+        )
+        
+        # Mock MinIO to raise S3Error with other code
+        mock_client = Mock()
+        mock_response = Mock()
+        s3_error = S3Error(
+            response=mock_response,
+            code='InternalError',
+            message='InternalError',
+            resource='resource',
+            request_id='request_id',
+            host_id='host_id',
+            bucket_name='test-bucket',
+            object_name='AAPL/123.json'
+        )
+        mock_client.get_object.side_effect = s3_error
+        mock_minio_class.return_value = mock_client
+        
+        url = reverse('api:stock-data', kwargs={'ticker': 'AAPL'})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn('error', response.data)
+        self.assertEqual(response.data['error']['code'], 'STORAGE_ERROR')
