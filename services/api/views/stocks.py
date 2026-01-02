@@ -44,10 +44,6 @@ class TickerDetailView(APIView):
     
     Returns detailed information about a stock.
     """
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.service = StockIngestionService()
 
     def get(self, request: Request, ticker: str) -> Response:
         """
