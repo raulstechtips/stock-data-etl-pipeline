@@ -102,7 +102,7 @@ class QueueForFetchAPITest(APITestCase):
         
         self.url = reverse('api:queue-for-fetch')
 
-    @patch('api.views.fetch_stock_data.delay')
+    @patch('api.views.ingestion_runs.fetch_stock_data.delay')
     def test_queue_new_stock(self, mock_delay):
         """Test queuing a new stock creates stock and run and triggers Celery task."""
         # Mock Celery task
@@ -128,7 +128,7 @@ class QueueForFetchAPITest(APITestCase):
         call_args = mock_delay.call_args
         self.assertEqual(call_args[1]['ticker'], 'AAPL')
 
-    @patch('api.views.fetch_stock_data.delay')
+    @patch('api.views.ingestion_runs.fetch_stock_data.delay')
     def test_queue_existing_stock_no_active_run(self, mock_delay):
         """Test queuing an existing stock with no active run."""
         mock_task_result = Mock()
@@ -153,7 +153,7 @@ class QueueForFetchAPITest(APITestCase):
         # Verify Celery task was called
         mock_delay.assert_called_once()
 
-    @patch('api.views.fetch_stock_data.delay')
+    @patch('api.views.ingestion_runs.fetch_stock_data.delay')
     def test_queue_returns_existing_active_run(self, mock_delay):
         """Test that queuing returns existing active run and does not trigger task."""
         stock = Stock.objects.create(ticker='AAPL')
@@ -190,7 +190,7 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
         self.assertIn('details', response.data['error'])
 
-    @patch('api.views.fetch_stock_data.delay')
+    @patch('api.views.ingestion_runs.fetch_stock_data.delay')
     def test_queue_normalizes_ticker_to_uppercase(self, mock_delay):
         """Test that tickers are normalized to uppercase."""
         mock_task_result = Mock()
@@ -206,7 +206,7 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['ticker'], 'AAPL')
 
-    @patch('api.views.fetch_stock_data.delay')
+    @patch('api.views.ingestion_runs.fetch_stock_data.delay')
     def test_queue_with_all_optional_fields(self, mock_delay):
         """Test queuing with all optional fields provided."""
         mock_task_result = Mock()
@@ -227,7 +227,7 @@ class QueueForFetchAPITest(APITestCase):
         self.assertEqual(response.data['requested_by'], 'data-pipeline')
         self.assertEqual(response.data['request_id'], 'req-2024-001')
     
-    @patch('api.views.fetch_stock_data.delay')
+    @patch('api.views.ingestion_runs.fetch_stock_data.delay')
     def test_queue_broker_error_transitions_to_failed(self, mock_delay):
         """Test that broker errors transition run to FAILED."""
         # Mock Celery broker error
@@ -261,7 +261,7 @@ class QueueForFetchAPITest(APITestCase):
         """Test that IntegrityError from race condition returns 409 Conflict."""
         
         # Mock the service to raise IntegrityError (simulating race condition)
-        with patch('api.views.StockIngestionService') as MockService:
+        with patch('api.views.ingestion_runs.StockIngestionService') as MockService:
             mock_service = MockService.return_value
             mock_service.queue_for_fetch.side_effect = IntegrityError(
                 'duplicate key value violates unique constraint'
@@ -1543,7 +1543,7 @@ class StockDataAPITest(APITestCase):
         self.test_json_data = b'{"ticker": "AAPL", "data": "test"}'
         self.test_json_data_str = '{"ticker": "AAPL", "data": "test"}'
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_success(self, mock_minio_class):
         """Test successful retrieval of stock data."""
         # Create DONE run with raw_data_uri
@@ -1634,7 +1634,7 @@ class StockDataAPITest(APITestCase):
         self.assertIn('error', response.data)
         self.assertEqual(response.data['error']['code'], 'NO_RAW_DATA_URI')
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_multiple_done_runs_returns_latest(self, mock_minio_class):
         """Test multiple DONE runs (returns latest)."""
         import time
@@ -1667,7 +1667,7 @@ class StockDataAPITest(APITestCase):
         # Verify latest run's data is returned (by created_at)
         mock_client.get_object.assert_called_once_with('test-bucket', 'AAPL/latest.json')
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_s3_file_not_found(self, mock_minio_class):
         """Test S3 file not found (404)."""
         from minio.error import S3Error
@@ -1703,7 +1703,7 @@ class StockDataAPITest(APITestCase):
         self.assertIn('error', response.data)
         self.assertEqual(response.data['error']['code'], 'DATA_FILE_NOT_FOUND')
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_s3_authentication_error(self, mock_minio_class):
         """Test S3 authentication error (401)."""
         from minio.error import S3Error
@@ -1738,7 +1738,7 @@ class StockDataAPITest(APITestCase):
         self.assertIn('error', response.data)
         self.assertEqual(response.data['error']['code'], 'STORAGE_AUTHENTICATION_ERROR')
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_s3_bucket_not_found(self, mock_minio_class):
         """Test S3 bucket not found (404)."""
         from minio.error import S3Error
@@ -1773,7 +1773,7 @@ class StockDataAPITest(APITestCase):
         self.assertIn('error', response.data)
         self.assertEqual(response.data['error']['code'], 'STORAGE_BUCKET_NOT_FOUND')
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_s3_connection_error(self, mock_minio_class):
         """Test S3 connection error (500)."""
         from minio.error import MinioException
@@ -1797,7 +1797,7 @@ class StockDataAPITest(APITestCase):
         self.assertIn('error', response.data)
         self.assertEqual(response.data['error']['code'], 'STORAGE_CONNECTION_ERROR')
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_invalid_json(self, mock_minio_class):
         """Test invalid JSON in file (500)."""
         # Create DONE run with valid raw_data_uri
@@ -1867,7 +1867,7 @@ class StockDataAPITest(APITestCase):
             raw_data_uri='s3://test-bucket/AAPL/123.json'
         )
         
-        with patch('api.views.Minio') as mock_minio_class:
+        with patch('api.views.stocks.Minio') as mock_minio_class:
             mock_client = Mock()
             mock_response = Mock()
             mock_response.read.return_value = self.test_json_data
@@ -1880,7 +1880,7 @@ class StockDataAPITest(APITestCase):
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.content, self.test_json_data)
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_s3_uri_parsing(self, mock_minio_class):
         """Test S3 URI parsing."""
         # Create DONE run with raw_data_uri='s3://bucket-name/path/to/file.json'
@@ -1904,7 +1904,7 @@ class StockDataAPITest(APITestCase):
         # Verify correct bucket and key are extracted and used
         mock_client.get_object.assert_called_once_with('bucket-name', 'path/to/file.json')
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_response_content_matches_exactly(self, mock_minio_class):
         """Test response content matches file content exactly."""
         # Create DONE run with raw_data_uri
@@ -1929,7 +1929,7 @@ class StockDataAPITest(APITestCase):
         # Verify response content is exactly the same bytes (no transformation)
         self.assertEqual(response.content, specific_json)
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_minio_response_closed_on_success(self, mock_minio_class):
         """Test MinIO response is properly closed on success."""
         # Create DONE run with raw_data_uri
@@ -1954,7 +1954,7 @@ class StockDataAPITest(APITestCase):
         self.assertGreaterEqual(mock_response.close.call_count, 1)
         self.assertGreaterEqual(mock_response.release_conn.call_count, 1)
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_minio_response_closed_on_error(self, mock_minio_class):
         """Test MinIO response is properly closed even on errors."""
         # Create DONE run with valid raw_data_uri
@@ -1981,7 +1981,7 @@ class StockDataAPITest(APITestCase):
         self.assertGreaterEqual(mock_response.close.call_count, 1)
         self.assertGreaterEqual(mock_response.release_conn.call_count, 1)
 
-    @patch('api.views.Minio')
+    @patch('api.views.stocks.Minio')
     def test_get_stock_data_s3_error_other_codes(self, mock_minio_class):
         """Test S3Error with other error codes (500)."""
         from minio.error import S3Error
