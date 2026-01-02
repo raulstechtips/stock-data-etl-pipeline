@@ -367,6 +367,105 @@ function defineRunsAPI() {
             } finally {
                 this.loading = false;
             }
+        },
+
+        /**
+         * List all exchanges with pagination and optional filters
+         * @param {number} pageSize - Number of items per page (max: 100)
+         * @param {string} cursor - Pagination cursor from previous response
+         * @param {object} filters - Optional filter parameters
+         * @param {string} filters.name - Exact exchange name match (case-insensitive)
+         * @param {string} filters.name__icontains - Exchange name contains substring (case-insensitive)
+         * @returns {Promise<object>} - Paginated response with next, previous, and results
+         * @example
+         * // List all exchanges
+         * await $store.runsAPI.listExchanges(100);
+         * 
+         * // List exchanges with filters
+         * await $store.runsAPI.listExchanges(100, null, {
+         *   name: 'NASDAQ'
+         * });
+         */
+        async listExchanges(pageSize = 50, cursor = null, filters = {}) {
+            try {
+                this.loading = true;
+                this.error = null;
+
+                // Build query parameters
+                const stringFilterKeys = ['name', 'name__icontains'];
+                const booleanFilterKeys = [];
+                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
+
+                const queryString = params.toString();
+                const endpoint = queryString ? `/exchanges?${queryString}` : '/exchanges';
+
+                const response = await window.api.request(endpoint, {
+                    method: 'GET'
+                });
+
+                // Handle response
+                if (!response.ok) {
+                    const errorMessage = response.data.error?.message || response.data.detail || `Request failed with status ${response.status}`;
+                    throw new Error(errorMessage);
+                }
+
+                return response.data;
+            } catch (error) {
+                this.error = error.message;
+                console.error('Failed to list exchanges:', error);
+                throw error;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        /**
+         * Queue all stocks for ingestion (bulk operation)
+         * @param {string} requestedBy - Email or identifier of requester (optional)
+         * @param {string} exchange - Exchange name to filter stocks by (optional, e.g., 'NASDAQ', 'NYSE')
+         * @returns {Promise<object>} - Response data with bulk_queue_run, task_id, message, and optional exchange
+         * @example
+         * // Queue all stocks
+         * await $store.runsAPI.queueAllStocks('admin@example.com');
+         * 
+         * // Queue only stocks from a specific exchange
+         * await $store.runsAPI.queueAllStocks('admin@example.com', 'NASDAQ');
+         */
+        async queueAllStocks(requestedBy = null, exchange = null) {
+            try {
+                this.loading = true;
+                this.error = null;
+
+                // Build request body - only include parameters that are provided
+                const requestBody = {};
+                
+                if (requestedBy !== null && requestedBy !== undefined && requestedBy !== '') {
+                    requestBody.requested_by = requestedBy;
+                }
+                
+                if (exchange !== null && exchange !== undefined && exchange !== '') {
+                    requestBody.exchange = exchange;
+                }
+
+                const response = await window.api.request('/ticker/queue/all', {
+                    method: 'POST',
+                    body: JSON.stringify(requestBody)
+                });
+
+                // Handle response
+                if (!response.ok) {
+                    const errorMessage = response.data.error?.message || response.data.detail || `Request failed with status ${response.status}`;
+                    throw new Error(errorMessage);
+                }
+
+                return response.data;
+            } catch (error) {
+                this.error = error.message;
+                console.error('Failed to queue all stocks:', error);
+                throw error;
+            } finally {
+                this.loading = false;
+            }
         }
     });
 }

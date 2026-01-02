@@ -14,6 +14,9 @@
             if (window.Alpine && Alpine.store('bulkQueueRunDetailsModal')) {
                 Alpine.store('bulkQueueRunDetailsModal').init();
             }
+            if (window.Alpine && Alpine.store('queueAllModal')) {
+                Alpine.store('queueAllModal').init();
+            }
             // Load bulk queue runs on page load
             this.$nextTick(() => {
                 if (Alpine.store('bulkQueueRunsList')) {
@@ -25,9 +28,19 @@
     class="max-w-7xl mx-auto"
 >
     <!-- Page Header -->
-    <div class="mb-6">
-        <h1 class="text-3xl font-bold text-theme-primary mb-2">Bulk Queue Runs</h1>
-        <p class="text-theme-secondary">Browse and filter all bulk queue runs</p>
+    <div class="mb-6 flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-theme-primary mb-2">Bulk Queue Runs</h1>
+            <p class="text-theme-secondary">Browse and filter all bulk queue runs</p>
+        </div>
+        <button
+            type="button"
+            @click="$store.queueAllModal.openModal()"
+            class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            aria-label="Queue all stocks"
+        >
+            Queue All Stocks
+        </button>
     </div>
 
     <!-- Filters Section -->
@@ -307,6 +320,7 @@
 
 {% block modals %}
     {% include 'components/bulk_queue_runs/details_modal.html' %}
+    {% include 'components/bulk_queue_runs/queue_all_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -315,5 +329,8 @@
     
     <!-- Bulk Queue Run Details Modal Store -->
     <script src="{% static 'js/stores/bulk_queue_runs/detailsModalStore.js' %}"></script>
+    
+    <!-- Queue All Modal Store -->
+    <script src="{% static 'js/stores/bulk_queue_runs/queueAllModalStore.js' %}"></script>
 {% endblock %}
 
