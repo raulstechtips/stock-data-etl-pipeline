@@ -1,5 +1,5 @@
 """
-Django filters for Stock and StockIngestionRun models.
+Django filters for Stock, StockIngestionRun, BulkQueueRun, and Exchange models.
 
 This module provides FilterSet classes for filtering API list views
 using django-filter. Filters support various lookup expressions including
@@ -8,7 +8,34 @@ exact matches, contains searches, date ranges, and boolean filters.
 
 from django_filters import rest_framework as filters
 
-from api.models import BulkQueueRun, Stock, StockIngestionRun, IngestionState
+from api.models import BulkQueueRun, Exchange, Stock, StockIngestionRun, IngestionState
+
+
+class ExchangeFilter(filters.FilterSet):
+    """
+    FilterSet for Exchange model.
+    
+    Provides filtering capabilities for exchange list views:
+    - name: Exact match (case-insensitive) by exchange name
+    - name__icontains: Contains search (case-insensitive) by exchange name
+    
+    Note: Exchange names are stored in uppercase (normalized on save),
+    but filters work with any case input and will match correctly.
+    
+    Example usage:
+        ?name=NASDAQ                    # Exact match (case-insensitive)
+        ?name__icontains=nas            # Contains 'nas' (case-insensitive)
+        ?name=NYSE                      # Exact match for NYSE
+        ?name__icontains=stock          # Exchanges containing 'stock' in name
+        ?name=NASDAQ&name__icontains=DA # Multiple filters combined (AND logic)
+    """
+    name = filters.CharFilter(field_name='name', lookup_expr='iexact')
+    
+    class Meta:
+        model = Exchange
+        fields = {
+            'name': ['icontains'],
+        }
 
 
 class StockFilter(filters.FilterSet):

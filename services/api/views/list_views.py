@@ -5,6 +5,7 @@ This module contains the API views for:
 - GET /tickers - List all stocks
 - GET /runs - List all ingestion runs
 - GET /bulk-queue-runs - List all bulk queue runs
+- GET /exchanges - List all exchanges
 - GET /runs/ticker/<ticker> - List runs for a specific ticker
 """
 
@@ -16,10 +17,11 @@ from rest_framework.generics import ListAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from api.filters import BulkQueueRunFilter, StockFilter, StockIngestionRunFilter
-from api.models import BulkQueueRun, Stock, StockIngestionRun
+from api.filters import BulkQueueRunFilter, ExchangeFilter, StockFilter, StockIngestionRunFilter
+from api.models import BulkQueueRun, Exchange, Stock, StockIngestionRun
 from api.serializers import (
     BulkQueueRunSerializer,
+    ExchangeSerializer,
     StockIngestionRunSerializer,
     StockSerializer,
 )
@@ -27,6 +29,39 @@ from .paginator import StandardCursorPagination
 
 
 logger = logging.getLogger(__name__)
+
+
+class ExchangeListView(ListAPIView):
+    """
+    API endpoint for listing all exchanges.
+    
+    GET /exchanges
+    
+    Returns a paginated list of all exchanges with cursor-based pagination.
+    Supports filtering by name (exact match and contains, both case-insensitive).
+    
+    Filtering capabilities:
+    - name: Exact exchange name match (case-insensitive)
+    - name__icontains: Exchange name contains (case-insensitive)
+    
+    Note: Exchange names are stored in uppercase (normalized on save),
+    but filters work with any case input and will match correctly.
+    
+    Filters can be combined for precise queries. All filters work seamlessly with
+    cursor-based pagination.
+    
+    Example requests:
+        GET /api/exchanges
+        GET /api/exchanges?name=NASDAQ
+        GET /api/exchanges?name__icontains=nas
+        GET /api/exchanges?name=NYSE&name__icontains=Y
+    """
+    serializer_class = ExchangeSerializer
+    pagination_class = StandardCursorPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ExchangeFilter
+    queryset = Exchange.objects.all().order_by('-created_at')
+
 
 class TickerListView(ListAPIView):
     """
