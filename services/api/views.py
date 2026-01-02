@@ -1008,9 +1008,7 @@ class StockDataView(APIView):
                 secret_key=settings.AWS_SECRET_ACCESS_KEY,
                 secure=secure
             )
-            
-            # Fetch JSON file from S3/MinIO
-            minio_response = None
+
             try:
                 minio_response = client.get_object(bucket_name, object_key)
                 
