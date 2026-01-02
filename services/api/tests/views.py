@@ -1144,6 +1144,206 @@ class BulkQueueRunListAPITest(APITestCase):
             self.assertIn('completed_at', result)
 
 
+class ExchangeListAPITest(APITestCase):
+    """Tests for the GET /api/exchanges endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
+        # Create multiple exchanges for testing
+        self.exchange1 = Exchange.objects.create(name='NASDAQ')
+        self.exchange2 = Exchange.objects.create(name='NYSE')
+        self.exchange3 = Exchange.objects.create(name='LSE')
+
+    def test_list_exchanges(self):
+        """Test listing all exchanges."""
+        url = reverse('api:exchange-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 3)
+        
+        # Verify exchange data
+        exchange_names = [item['name'] for item in response.data['results']]
+        self.assertIn('NASDAQ', exchange_names)
+        self.assertIn('NYSE', exchange_names)
+        self.assertIn('LSE', exchange_names)
+
+    def test_list_exchanges_empty(self):
+        """Test listing exchanges when none exist."""
+        Exchange.objects.all().delete()
+        
+        url = reverse('api:exchange-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_exchanges_pagination(self):
+        """Test cursor pagination for exchanges."""
+        # Create more exchanges to test pagination
+        for i in range(55):
+            Exchange.objects.create(name=f'EXCHANGE{i:02d}')
+        
+        url = reverse('api:exchange-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIn('next', response.data)
+        # Default page size is 50
+        self.assertEqual(len(response.data['results']), 50)
+        
+        # Test next page
+        if response.data['next']:
+            next_response = self.client.get(response.data['next'])
+            self.assertEqual(next_response.status_code, status.HTTP_200_OK)
+            self.assertGreater(len(next_response.data['results']), 0)
+
+    def test_list_exchanges_ordering(self):
+        """Test that exchanges are ordered by -created_at (newest first)."""
+        # Create a new exchange (should appear first)
+        newest_exchange = Exchange.objects.create(name='NEWEST')
+        
+        url = reverse('api:exchange-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        # First result should be the newest
+        self.assertEqual(response.data['results'][0]['name'], 'NEWEST')
+        self.assertEqual(response.data['results'][0]['id'], str(newest_exchange.id))
+
+    def test_list_exchanges_filter_name_exact(self):
+        """Test filtering exchanges by exact name match (case-insensitive)."""
+        url = reverse('api:exchange-list')
+        response = self.client.get(url, {'name': 'NASDAQ'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'NASDAQ')
+
+    def test_list_exchanges_filter_name_exact_case_insensitive(self):
+        """Test filtering exchanges by exact name match is case-insensitive."""
+        url = reverse('api:exchange-list')
+        # Test lowercase
+        response = self.client.get(url, {'name': 'nasdaq'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'NASDAQ')
+        
+        # Test mixed case
+        response = self.client.get(url, {'name': 'NySe'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'NYSE')
+
+    def test_list_exchanges_filter_name_icontains(self):
+        """Test filtering exchanges by name contains (case-insensitive)."""
+        url = reverse('api:exchange-list')
+        response = self.client.get(url, {'name__icontains': 'AS'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        # Should match NASDAQ
+        exchange_names = [item['name'] for item in response.data['results']]
+        self.assertIn('NASDAQ', exchange_names)
+
+    def test_list_exchanges_filter_name_icontains_case_insensitive(self):
+        """Test filtering exchanges by name contains is case-insensitive."""
+        url = reverse('api:exchange-list')
+        # Test lowercase
+        response = self.client.get(url, {'name__icontains': 'nas'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        exchange_names = [item['name'] for item in response.data['results']]
+        self.assertIn('NASDAQ', exchange_names)
+        
+        # Test mixed case
+        response = self.client.get(url, {'name__icontains': 'Ny'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        exchange_names = [item['name'] for item in response.data['results']]
+        self.assertIn('NYSE', exchange_names)
+
+    def test_list_exchanges_filter_multiple_filters(self):
+        """Test combining multiple filters."""
+        url = reverse('api:exchange-list')
+        # Filter by name contains 'AS' (should match NASDAQ)
+        response = self.client.get(url, {'name__icontains': 'AS', 'name': 'NASDAQ'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'NASDAQ')
+
+    def test_list_exchanges_filter_no_match(self):
+        """Test filtering exchanges with no matching results."""
+        url = reverse('api:exchange-list')
+        response = self.client.get(url, {'name': 'NONEXISTENT'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_exchanges_response_format_matches_serializer(self):
+        """Test that response format matches ExchangeSerializer output."""
+        url = reverse('api:exchange-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        
+        if len(response.data['results']) > 0:
+            result = response.data['results'][0]
+            # Verify all expected fields are present
+            self.assertIn('id', result)
+            self.assertIn('name', result)
+            self.assertIn('created_at', result)
+            self.assertIn('updated_at', result)
+
+    def test_list_exchanges_filter_respects_name_normalization(self):
+        """Test that filtering respects Exchange name normalization (uppercase)."""
+        # Create exchange with lowercase name (will be normalized to uppercase)
+        exchange = Exchange.objects.create(name='testexchange')
+        # Verify it was normalized
+        exchange.refresh_from_db()
+        self.assertEqual(exchange.name, 'TESTEXCHANGE')
+        
+        url = reverse('api:exchange-list')
+        # Filter should work with any case
+        response = self.client.get(url, {'name': 'testexchange'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'TESTEXCHANGE')
+        
+        # Also test with contains
+        response = self.client.get(url, {'name__icontains': 'test'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        exchange_names = [item['name'] for item in response.data['results']]
+        self.assertIn('TESTEXCHANGE', exchange_names)
+
+
 class BulkQueueRunStatsDetailAPITest(APITestCase):
     """Tests for the GET /api/bulk-queue-runs/<bulk_queue_run_id>/stats endpoint."""
 

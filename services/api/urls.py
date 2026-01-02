@@ -10,6 +10,7 @@ Endpoints:
     GET  /ticker/<ticker>/status                    - Get current status of a stock
     POST /ticker/queue                              - Queue a stock for ingestion
     POST /ticker/queue/all                          - Queue all stocks for ingestion (bulk)
+    GET  /exchanges                                 - List all exchanges
     GET  /runs                                      - List all ingestion runs
     GET  /runs/ticker/<ticker>                      - List runs for a specific ticker
     GET  /run/<run_id>/detail                       - Get details of a specific run
@@ -23,6 +24,7 @@ from django.urls import path
 from api.views import (
     BulkQueueRunListView,
     BulkQueueRunStatsDetailView,
+    ExchangeListView,
     QueueAllStocksForFetchView,
     QueueForFetchView,
     RunDetailView,
@@ -68,6 +70,13 @@ urlpatterns = [
         'ticker/queue/all',
         QueueAllStocksForFetchView.as_view(),
         name='queue-all-stocks-for-fetch'
+    ),
+    
+    # Exchange list endpoint
+    path(
+        'exchanges',
+        ExchangeListView.as_view(),
+        name='exchange-list'
     ),
     
     # Run list and detail endpoints
