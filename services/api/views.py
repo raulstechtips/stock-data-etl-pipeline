@@ -899,12 +899,7 @@ class StockDataView(APIView):
                 )
             
             # Query for latest DONE run
-            done_run = (
-                StockIngestionRun.objects
-                .filter(stock=stock, state=IngestionState.DONE)
-                .order_by('-created_at')
-                .first()
-            )
+            done_run = StockIngestionRun.objects.get_latest_done_run(stock)
             
             if not done_run:
                 logger.warning(
