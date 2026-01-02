@@ -1096,7 +1096,7 @@ class StockDataView(APIView):
                         status=status.HTTP_404_NOT_FOUND
                     )
                 elif error_code in ['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'AccessDenied']:
-                    logger.exception(
+                    logger.error(
                         "S3/MinIO authentication error",
                         extra={
                             'ticker': normalized_ticker,
@@ -1119,7 +1119,7 @@ class StockDataView(APIView):
                         status=status.HTTP_401_UNAUTHORIZED
                     )
                 elif error_code == 'NoSuchBucket':
-                    logger.exception(
+                    logger.error(
                         "S3 bucket not found",
                         extra={
                             'ticker': normalized_ticker,
