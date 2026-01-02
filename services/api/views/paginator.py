@@ -15,7 +15,7 @@ Best practices:
 - Always use cursor-based pagination for endpoints that may deal with large tables.
 - Adjust the ordering and page size as needed per API resource type.
 
-See: services/api/views.py for usage examples.
+See: services/api/list_views.py for usage examples.
 
 """
 from rest_framework.pagination import CursorPagination
