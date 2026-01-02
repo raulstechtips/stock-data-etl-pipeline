@@ -301,18 +301,22 @@ def _update_stock_with_metadata(
     task is updating the same Stock), an OperationalError will be raised which
     should be caught and converted to RetryableError by the caller.
     
+    This function only updates fields that have actually changed, preventing
+    unnecessary cache invalidation signals from firing when data is unchanged.
+    
     For the 'exchange' field, this function:
     1. Extracts the exchange name from metadata_dict
     2. Normalizes it (strip and uppercase)
     3. Uses Exchange.objects.get_or_create() to get or create the Exchange
-    4. Sets stock.exchange to the Exchange instance (ForeignKey)
+    4. Compares current exchange with new exchange
+    5. Only updates if they differ
     
     Args:
         stock_id: UUID of the Stock to update
         metadata_dict: Dictionary of metadata fields to update
         
     Returns:
-        List of field names that were updated
+        List of field names that were updated (empty if no changes)
         
     Raises:
         OperationalError: If database lock cannot be acquired (retryable)
@@ -325,12 +329,12 @@ def _update_stock_with_metadata(
         # If lock cannot be acquired, this will raise OperationalError
         stock = Stock.objects.select_for_update().get(id=stock_id)
         
-        # Update fields that are present in metadata_dict
-        for field_name, value in metadata_dict.items():
+        # Process fields that are present in metadata_dict
+        for field_name, new_value in metadata_dict.items():
             # Special handling for exchange field (ForeignKey to Exchange model)
-            if field_name == 'exchange' and value:
+            if field_name == 'exchange' and new_value:
                 # Normalize exchange name (strip and uppercase)
-                normalized_exchange_name = value.strip().upper()
+                normalized_exchange_name = new_value.strip().upper()
                 
                 # Get or create Exchange instance
                 # get_or_create is atomic and handles race conditions
@@ -338,28 +342,70 @@ def _update_stock_with_metadata(
                     name=normalized_exchange_name
                 )
                 
-                logger.info(
-                    "Exchange get_or_create completed",
-                    extra={
-                        "exchange_name": normalized_exchange_name,
-                        "exchange_id": str(exchange.id),
-                        "exchange_created": created,
-                        "stock_id": str(stock_id)
-                    }
-                )
+                # Compare current exchange with new exchange
+                # Only update if they differ (handles None case)
+                current_exchange_id = stock.exchange_id if stock.exchange else None
+                new_exchange_id = exchange.id if exchange else None
                 
-                # Set the ForeignKey
-                stock.exchange = exchange
-                fields_updated.append(field_name)
+                if current_exchange_id != new_exchange_id:
+                    stock.exchange = exchange
+                    fields_updated.append(field_name)
+                    
+                    logger.info(
+                        "Exchange will be updated",
+                        extra={
+                            "exchange_name": normalized_exchange_name,
+                            "exchange_id": str(exchange.id),
+                            "exchange_created": created,
+                            "stock_id": str(stock_id),
+                            "current_exchange_id": str(current_exchange_id) if current_exchange_id else None,
+                            "new_exchange_id": str(new_exchange_id)
+                        }
+                    )
+                else:
+                    logger.debug(
+                        "Exchange unchanged, skipping update",
+                        extra={
+                            "exchange_name": normalized_exchange_name,
+                            "exchange_id": str(exchange.id),
+                            "stock_id": str(stock_id)
+                        }
+                    )
             elif hasattr(stock, field_name):
-                setattr(stock, field_name, value)
-                fields_updated.append(field_name)
+                # Get current value for comparison
+                current_value = getattr(stock, field_name)
+                
+                # Compare current value with new value
+                # Handle None cases explicitly
+                if current_value != new_value:
+                    setattr(stock, field_name, new_value)
+                    fields_updated.append(field_name)
+                    
+                    logger.debug(
+                        "Field will be updated",
+                        extra={
+                            "field": field_name,
+                            "stock_id": str(stock_id),
+                            "current_value": str(current_value) if current_value is not None else None,
+                            "new_value": str(new_value) if new_value is not None else None
+                        }
+                    )
+                else:
+                    logger.debug(
+                        "Field unchanged, skipping update",
+                        extra={
+                            "field": field_name,
+                            "stock_id": str(stock_id),
+                            "value": str(new_value) if new_value is not None else None
+                        }
+                    )
             else:
                 logger.warning(
                     "Field not found on Stock model",
                     extra={"field": field_name, "stock_id": str(stock_id)}
                 )
         
+        # Only save if there are actual changes
         if fields_updated:
             stock.save(update_fields=fields_updated + ['updated_at'])
             logger.info(

@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # Service container for PostgreSQL - isolated database for tests
+    # Service containers for PostgreSQL and Redis - isolated services for tests
     services:
       postgres:
         image: postgres:15-alpine
@@ -26,6 +26,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       SECRET_KEY: "test-secret-key-for-ci-only-not-for-production"
       APP_ENV: "test"
@@ -35,6 +45,8 @@ jobs:
       SQL_PASSWORD: "test_password"
       SQL_HOST: "localhost"
       SQL_PORT: "5432"
+      # Redis connection for service container
+      REDIS_HOST: "localhost"
 
     steps:
       - name: Checkout code

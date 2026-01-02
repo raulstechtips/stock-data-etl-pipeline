@@ -447,6 +447,80 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         self.assertEqual(self.stock.sector, 'Technology')
         self.assertFalse(hasattr(self.stock, 'invalid_field'))
 
+    def test_unchanged_fields_do_not_trigger_save(self):
+        """Test that unchanged fields don't trigger save, preventing unnecessary cache invalidation."""
+        # Arrange - Set initial values
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        self.stock.sector = 'Information Technology'
+        self.stock.name = 'Apple Inc.'
+        self.stock.exchange = nasdaq
+        self.stock.country = 'US'
+        self.stock.save()
+        
+        # Store original updated_at timestamp
+        original_updated_at = self.stock.updated_at
+        
+        # Metadata has same values (no changes)
+        metadata_dict = {
+            'sector': 'Information Technology',  # Same value
+            'name': 'Apple Inc.',  # Same value
+            'exchange': 'NASDAQ',  # Same exchange
+            'country': 'US',  # Same value
+        }
+
+        # Act
+        fields_updated = _update_stock_with_metadata(self.stock.id, metadata_dict)
+
+        # Assert - No fields should be updated since values are unchanged
+        self.assertEqual(fields_updated, [])
+        
+        # Verify database state unchanged
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.sector, 'Information Technology')
+        self.assertEqual(self.stock.name, 'Apple Inc.')
+        self.assertEqual(self.stock.exchange.id, nasdaq.id)
+        self.assertEqual(self.stock.country, 'US')
+        
+        # Verify updated_at was not changed (save was not called)
+        # Note: updated_at has auto_now=True, so if save() was called, it would change
+        # We check that updated_at is the same (or very close) to verify save() wasn't called
+        # Allow small time difference due to database precision
+        time_diff = abs((self.stock.updated_at - original_updated_at).total_seconds())
+        self.assertLess(time_diff, 1, "updated_at should not change if no fields were updated")
+
+    def test_partially_unchanged_fields_only_update_changed_ones(self):
+        """Test that only changed fields are updated, unchanged ones are skipped."""
+        # Arrange - Set initial values
+        nasdaq = Exchange.objects.create(name='NASDAQ')
+        self.stock.sector = 'Information Technology'
+        self.stock.name = 'Apple Inc.'
+        self.stock.exchange = nasdaq
+        self.stock.country = 'US'
+        self.stock.save()
+        
+        # Metadata has some changed values and some unchanged
+        metadata_dict = {
+            'sector': 'Technology',  # Changed
+            'name': 'Apple Inc.',  # Unchanged
+            'exchange': 'NASDAQ',  # Unchanged
+            'country': 'CA',  # Changed
+        }
+
+        # Act
+        fields_updated = _update_stock_with_metadata(self.stock.id, metadata_dict)
+
+        # Assert - Only changed fields should be in the list
+        self.assertEqual(set(fields_updated), {'sector', 'country'})
+        self.assertNotIn('name', fields_updated)
+        self.assertNotIn('exchange', fields_updated)
+        
+        # Verify database state - only changed fields updated
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.sector, 'Technology')  # Changed
+        self.assertEqual(self.stock.name, 'Apple Inc.')  # Unchanged
+        self.assertEqual(self.stock.exchange.id, nasdaq.id)  # Unchanged
+        self.assertEqual(self.stock.country, 'CA')  # Changed
+
 
 class ExchangeHandlingInMetadataWorkerTests(TransactionTestCase):
     """Tests for Exchange ForeignKey handling in update_stock_metadata task."""
