@@ -178,48 +178,41 @@ REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
 REDIS_DB = os.environ.get("REDIS_DB", "0")
 
+
 required_redis = {
     "REDIS_HOST": REDIS_HOST,
-    "REDIS_PASSWORD": REDIS_PASSWORD,
 }
+if APP_ENV in ["prod", "stage", "dev"]:
+    required_redis["REDIS_PASSWORD"] = REDIS_PASSWORD
+
 
 missing = [name for name, val in required_redis.items() if not val]
-if missing and APP_ENV in ["prod", "stage", "dev"]:
+if missing:
     raise ImproperlyConfigured(
         f"Missing required Redis settings: {', '.join(missing)}"
     )
 
+# Build Redis connection URL
 if APP_ENV in ["prod", "stage", "dev"]:
-    # Build Redis connection URL
-    encoded_pw = quote(REDIS_PASSWORD or "", safe="")
-    redis_url = f"redis://:{encoded_pw}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
-    
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-            'LOCATION': redis_url,
-            'TIMEOUT': 300,  # 5 minutes default
-            'OPTIONS': {
-                'socket_connect_timeout': 5,
-                'socket_timeout': 5,
-                'retry_on_timeout': True,
-                'max_connections': 50,
-            }
-        }
-    }
+    encoded_redis_pw = quote(REDIS_PASSWORD or "", safe="")
+    redis_url = f"redis://:{encoded_redis_pw}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
 else:
-    # Local file-based cache for testing
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
-            'LOCATION': '/tmp/django_cache',
-            'TIMEOUT': 300,
-            'OPTIONS': {
-                'MAX_ENTRIES': 1000,
-                'CULL_FREQUENCY': 3,
-            }
+    redis_url = f"redis://@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': redis_url,
+        'TIMEOUT': 300,  # 5 minutes default
+        'OPTIONS': {
+            'socket_connect_timeout': 5,
+            'socket_timeout': 5,
+            'retry_on_timeout': True,
+            'max_connections': 50,
         }
     }
+}
+
 
 # Message Broker (RabbitMQ)
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST")
