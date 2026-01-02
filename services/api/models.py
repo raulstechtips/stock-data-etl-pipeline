@@ -248,6 +248,15 @@ class StockIngestionRunManager(models.Manager):
         """
         terminal_states = [IngestionState.DONE, IngestionState.FAILED]
         return self.exclude(state__in=terminal_states)
+    
+    def get_latest_done_run(self, stock: Stock) -> 'StockIngestionRun | None':
+        """Get the latest DONE state run for a stock."""
+        return (
+            self.select_related('stock')
+            .filter(stock=stock, state=IngestionState.DONE)
+            .order_by('-created_at')
+            .first()
+        )
 
 
 class StockIngestionRun(models.Model):
