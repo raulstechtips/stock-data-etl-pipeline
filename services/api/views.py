@@ -28,6 +28,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from minio import Minio
 from minio.error import MinioException, S3Error
 from rest_framework import status
+from rest_framework.decorators import permission_classes
 from rest_framework.generics import ListAPIView
 from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import AllowAny
@@ -849,8 +850,7 @@ class StockDataView(APIView):
     The response is the raw JSON bytes with no transformation or parsing.
     """
     
-    permission_classes = [AllowAny]
-
+    @permission_classes([AllowAny])
     def get(self, request: Request, ticker: str) -> HttpResponse:
         """
         Get the latest raw stock data JSON for a specific ticker.
