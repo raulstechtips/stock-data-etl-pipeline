@@ -173,18 +173,16 @@ else:
 
 
 # Cache
-REDIS_HOST = os.environ.get("REDIS_HOST")
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
-REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
+REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_DB = os.environ.get("REDIS_DB", "0")
 
 
 required_redis = {
     "REDIS_HOST": REDIS_HOST,
+    "REDIS_PASSWORD": REDIS_PASSWORD,
 }
-if APP_ENV in ["prod", "stage", "dev"]:
-    required_redis["REDIS_PASSWORD"] = REDIS_PASSWORD
-
 
 missing = [name for name, val in required_redis.items() if not val]
 if missing:

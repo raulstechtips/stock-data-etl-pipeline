@@ -47,7 +47,6 @@ jobs:
       SQL_PORT: "5432"
       # Redis connection for service container
       REDIS_HOST: "localhost"
-      REDIS_PASSWORD: "test_redis_password"
 
     steps:
       - name: Checkout code
