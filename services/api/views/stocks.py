@@ -16,7 +16,6 @@ from django.http import HttpResponse
 from minio import Minio
 from minio.error import MinioException, S3Error
 from rest_framework import status
-from rest_framework.decorators import permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -142,7 +141,8 @@ class StockDataView(APIView):
     The response is the raw JSON bytes with no transformation or parsing.
     """
     
-    @permission_classes([AllowAny])
+    permission_classes = [AllowAny]
+
     def get(self, request: Request, ticker: str) -> HttpResponse:
         """
         Get the latest raw stock data JSON for a specific ticker.
