@@ -65,7 +65,7 @@ def invalidate_exchange_list_cache(sender, **kwargs):
     signal_type = 'post_save' if 'created' in kwargs else 'post_delete'
     was_created = kwargs.get('created', False) if signal_type == 'post_save' else None
     
-    logger.info(
+    logger.debug(
         f"Exchange {signal_type} signal received, invalidating list view caches",
         extra={
             'exchange_id': str(instance.id) if instance else None,
@@ -104,7 +104,7 @@ def invalidate_stock_list_cache(sender, **kwargs):
     signal_type = 'post_save' if 'created' in kwargs else 'post_delete'
     was_created = kwargs.get('created', False) if signal_type == 'post_save' else None
     
-    logger.info(
+    logger.debug(
         f"Stock {signal_type} signal received, invalidating list view cache",
         extra={
             'stock_id': str(instance.id) if instance else None,
