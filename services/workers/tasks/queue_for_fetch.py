@@ -440,7 +440,7 @@ def _upload_to_storage(ticker: str, run_id: str, file_data: bytes) -> str:
             raise StorageBucketNotFoundError(f"Bucket {bucket_name} not found")
         
         # Generate object key for JSON file
-        object_key = f"{ticker}.json"
+        object_key = f"{ticker}/{run_id}.json"
         
         # Upload JSON file
         file_stream = io.BytesIO(file_data)

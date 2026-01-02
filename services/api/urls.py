@@ -15,6 +15,7 @@ Endpoints:
     GET  /run/<run_id>/detail                       - Get details of a specific run
     GET  /bulk-queue-runs                           - List all bulk queue runs
     GET  /bulk-queue-runs/<bulk_queue_run_id>/stats - Get stats for a bulk queue run
+    GET  /data/all-data/<ticker>                   - Get latest raw stock data JSON
 """
 
 from django.urls import path
@@ -26,6 +27,7 @@ from api.views import (
     QueueForFetchView,
     RunDetailView,
     RunListView,
+    StockDataView,
     StockStatusView,
     TickerDetailView,
     TickerListView,
@@ -90,6 +92,13 @@ urlpatterns = [
         'bulk-queue-runs/<str:bulk_queue_run_id>/stats',
         BulkQueueRunStatsDetailView.as_view(),
         name='bulk-queue-run-stats-detail'
+    ),
+    
+    # Stock data endpoints
+    path(
+        'data/all-data/<str:ticker>',
+        StockDataView.as_view(),
+        name='stock-data'
     ),
 ]
 

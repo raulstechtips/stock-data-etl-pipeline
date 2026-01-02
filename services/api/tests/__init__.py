@@ -27,7 +27,8 @@ from .views import (
     TickerRunsListAPITest,
     QueueAllStocksForFetchAPITest,
     BulkQueueRunListAPITest,
-    BulkQueueRunStatsDetailAPITest
+    BulkQueueRunStatsDetailAPITest,
+    StockDataAPITest
 )
 from .filters import (
     TickerListFilterAPITest, 
@@ -69,4 +70,5 @@ __all__ = [
     'BulkQueueRunStatsDetailAPITest',
     'AuthenticationRequiredAPITest',
     'AuthenticatedAccessAPITest',
+    'StockDataAPITest'
 ]
