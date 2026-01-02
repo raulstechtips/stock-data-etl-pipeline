@@ -1205,7 +1205,6 @@ class StockDataView(APIView):
                 extra={
                     'ticker': normalized_ticker,
                 },
-                exc_info=True
             )
             return Response(
                 {
