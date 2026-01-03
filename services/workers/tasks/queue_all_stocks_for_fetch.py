@@ -104,7 +104,7 @@ def queue_all_stocks_for_fetch(
     # Step 2: Update BulkQueueRun.started_at when processing begins
     bulk_queue_run.started_at = timezone.now()
     bulk_queue_run.save(update_fields=['started_at'])
-    logger.info(
+    logger.debug(
         "Updated BulkQueueRun started_at",
         extra={
             "bulk_queue_run_id": bulk_queue_run_id,
@@ -129,7 +129,7 @@ def queue_all_stocks_for_fetch(
             # Filter stocks by exchange
             stocks_queryset = stocks_queryset.filter(exchange=exchange_instance)
             
-            logger.info(
+            logger.debug(
                 "Filtering stocks by exchange in queue_all_stocks_for_fetch task",
                 extra={
                     "bulk_queue_run_id": bulk_queue_run_id,
@@ -168,7 +168,7 @@ def queue_all_stocks_for_fetch(
     bulk_queue_run.total_stocks = total_stocks
     bulk_queue_run.save(update_fields=['total_stocks'])
     
-    logger.info(
+    logger.debug(
         "Retrieved stocks for processing",
         extra={
             "bulk_queue_run_id": bulk_queue_run_id,

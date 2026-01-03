@@ -58,7 +58,7 @@ class TickerDetailView(APIView):
         try:
             stock = Stock.objects.get(ticker=ticker.upper())
             serializer = StockSerializer(stock)
-            logger.info(
+            logger.debug(
                 "Stock details retrieved successfully",
                 extra={'ticker': ticker.upper(), 'stock_id': str(stock.id)}
             )
@@ -108,7 +108,7 @@ class StockStatusView(APIView):
         try:
             result = self.service.get_stock_status(ticker)
             serializer = StockStatusResponseSerializer(result)
-            logger.info(
+            logger.debug(
                 "Stock status retrieved successfully",
                 extra={'ticker': ticker.upper(), 'state': result.state, 'run_id': str(result.run_id) if result.run_id else None}
             )
@@ -337,7 +337,7 @@ class StockDataView(APIView):
                     )
                 
                 # Return raw JSON bytes
-                logger.info(
+                logger.debug(
                     "Stock data retrieved successfully",
                     extra={
                         'ticker': normalized_ticker,
