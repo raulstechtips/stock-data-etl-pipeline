@@ -85,7 +85,7 @@ const api = {
 
     /**
          * Build query parameters for API requests
-         * @private
+         * @public
          * @param {number} pageSize - Number of items per page
          * @param {string} cursor - Pagination cursor
          * @param {object} filters - Filter parameters
