@@ -50,4 +50,7 @@ urlpatterns = [
     
     # Frontend
     path('dashboard/', include('frontend.urls')),
+
+    # Mock API endpoint for testing workers (serves sample JSON data)
+    path('mock-api/', include('workers.urls')),
 ]
