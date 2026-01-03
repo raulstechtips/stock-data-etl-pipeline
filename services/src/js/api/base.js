@@ -81,7 +81,44 @@ const api = {
             console.error('API Error:', error);
             throw error;
         }
-    }
+    },
+
+    /**
+         * Build query parameters for API requests
+         * @private
+         * @param {number} pageSize - Number of items per page
+         * @param {string} cursor - Pagination cursor
+         * @param {object} filters - Filter parameters
+         * @param {string[]} stringFilterKeys - Array of string filter keys to process
+         * @param {string[]} booleanFilterKeys - Array of boolean filter keys to process
+         * @returns {URLSearchParams} - Built query parameters
+         */
+    buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys) {
+        const params = new URLSearchParams();
+        if (pageSize) params.append('page_size', pageSize);
+        if (cursor) params.append('cursor', cursor);
+
+        // Add filter parameters (skip null/undefined/empty string values)
+        if (filters && typeof filters === 'object') {
+            // Handle string filters
+            stringFilterKeys.forEach(key => {
+                const value = filters[key];
+                if (value !== null && value !== undefined && value !== '') {
+                    params.append(key, value);
+                }
+            });
+
+            // Handle boolean filters (convert to string)
+            booleanFilterKeys.forEach(key => {
+                const value = filters[key];
+                if (value !== null && value !== undefined) {
+                    params.append(key, String(value));
+                }
+            });
+        }
+
+        return params;
+    },
 };
 
 // Make api globally available
