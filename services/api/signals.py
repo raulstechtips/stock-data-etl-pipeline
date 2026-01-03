@@ -7,6 +7,8 @@ list view responses when models are created, updated, or deleted.
 Signal Handlers:
     - invalidate_exchange_list_cache: Invalidates ExchangeListView and TickerListView
       caches when Exchange model is saved or deleted
+    - invalidate_sector_list_cache: Invalidates SectorListView and TickerListView
+      caches when Sector model is saved or deleted
     - invalidate_stock_list_cache: Invalidates TickerListView cache when Stock
       model is saved or deleted
 
@@ -18,6 +20,10 @@ Cache Invalidation Strategy:
     When an Exchange is created/updated/deleted:
     - ExchangeListView cache is invalidated (direct impact)
     - TickerListView cache is invalidated (stocks reference exchanges)
+    
+    When a Sector is created/updated/deleted:
+    - SectorListView cache is invalidated (direct impact)
+    - TickerListView cache is invalidated (stocks reference sectors)
     
     When a Stock is created/updated/deleted:
     - TickerListView cache is invalidated (direct impact)
@@ -34,7 +40,7 @@ from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from api.cache_utils import invalidate_list_view_cache
-from api.models import Exchange, Stock
+from api.models import Exchange, Sector, Stock
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +85,49 @@ def invalidate_exchange_list_cache(sender, **kwargs):
     invalidate_list_view_cache('api:exchange-list')
     
     # Invalidate TickerListView cache (stocks reference exchanges)
+    invalidate_list_view_cache('api:ticker-list')
+
+
+@receiver([post_save, post_delete], sender=Sector)
+def invalidate_sector_list_cache(sender, **kwargs):
+    """
+    Invalidate SectorListView and TickerListView caches when Sector changes.
+    
+    This signal handler is connected to post_save and post_delete signals
+    for the Sector model. When a sector is created, updated, or deleted,
+    it invalidates the cache for both SectorListView and TickerListView.
+    
+    TickerListView is also invalidated because stocks reference sectors,
+    and the sector information is included in the stock list response.
+    
+    Args:
+        sender: The Sector model class
+        **kwargs: Signal arguments including 'instance' and 'created' (for post_save)
+        
+    Example:
+        When a Sector is saved or deleted, this handler automatically
+        invalidates cached responses for:
+        - GET /api/sectors (SectorListView)
+        - GET /api/tickers (TickerListView)
+    """
+    instance = kwargs.get('instance')
+    signal_type = 'post_save' if 'created' in kwargs else 'post_delete'
+    was_created = kwargs.get('created', False) if signal_type == 'post_save' else None
+    
+    logger.debug(
+        f"Sector {signal_type} signal received, invalidating list view caches",
+        extra={
+            'sector_id': str(instance.id) if instance else None,
+            'sector_name': instance.name if instance else None,
+            'signal_type': signal_type,
+            'was_created': was_created
+        }
+    )
+    
+    # Invalidate SectorListView cache (direct impact)
+    invalidate_list_view_cache('api:sector-list')
+    
+    # Invalidate TickerListView cache (stocks reference sectors)
     invalidate_list_view_cache('api:ticker-list')
 
 

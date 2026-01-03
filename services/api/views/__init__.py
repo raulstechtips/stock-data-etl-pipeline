@@ -5,11 +5,11 @@ This module initializes and exposes all primary API views for the Stock Ticker E
 It aggregates view classes for:
 - Stock and ticker detail endpoints
 - Ingestion runs (queuing, status, detail, and bulk operations)
-- List endpoints for tickers, exchanges, and bulk queue runs
+- List endpoints for tickers, exchanges, sectors, and bulk queue runs
 - Stock data retrieval
 
 Usage:
-    from api.views import QueueForFetchView, RunDetailView, TickerListView, ExchangeListView, ...
+    from api.views import QueueForFetchView, RunDetailView, TickerListView, ExchangeListView, SectorListView, ...
 
 Views:
     - BulkQueueRunStatsDetailView
@@ -18,6 +18,7 @@ Views:
     - QueueForFetchView
     - TickerListView
     - ExchangeListView
+    - SectorListView
     - RunListView
     - BulkQueueRunListView
     - TickerRunsListView
@@ -28,7 +29,7 @@ Views:
 
 from .bulk_queue_runs import BulkQueueRunStatsDetailView, QueueAllStocksForFetchView
 from .ingestion_runs import QueueForFetchView, RunDetailView
-from .list_views import ExchangeListView, TickerListView, RunListView, BulkQueueRunListView, TickerRunsListView
+from .list_views import ExchangeListView, SectorListView, TickerListView, RunListView, BulkQueueRunListView, TickerRunsListView
 from .stocks import TickerDetailView, StockStatusView, StockDataView
 __all__ = [
     'BulkQueueRunStatsDetailView',
@@ -37,6 +38,7 @@ __all__ = [
     'QueueForFetchView',
     'TickerListView',
     'ExchangeListView',
+    'SectorListView',
     'RunListView',
     'BulkQueueRunListView',
     'TickerRunsListView',

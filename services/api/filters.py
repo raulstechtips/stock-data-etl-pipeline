@@ -8,7 +8,7 @@ exact matches, contains searches, date ranges, and boolean filters.
 
 from django_filters import rest_framework as filters
 
-from api.models import BulkQueueRun, Exchange, Stock, StockIngestionRun, IngestionState
+from api.models import BulkQueueRun, Exchange, Sector, Stock, StockIngestionRun, IngestionState
 
 
 class ExchangeFilter(filters.FilterSet):
@@ -38,27 +38,55 @@ class ExchangeFilter(filters.FilterSet):
         }
 
 
+class SectorFilter(filters.FilterSet):
+    """
+    FilterSet for Sector model.
+    
+    Provides filtering capabilities for sector list views:
+    - name: Exact match (case-insensitive) by sector name
+    - name__icontains: Contains search (case-insensitive) by sector name
+    
+    Note: Sector names preserve case (unlike Exchange which normalizes to uppercase),
+    but filters work with any case input and will match correctly.
+    
+    Example usage:
+        ?name=Information Technology    # Exact match (case-insensitive)
+        ?name__icontains=technology     # Contains 'technology' (case-insensitive)
+        ?name=Financials                # Exact match for Financials
+        ?name__icontains=tech           # Sectors containing 'tech' in name
+        ?name=Technology&name__icontains=Info  # Multiple filters combined (AND logic)
+    """
+    name = filters.CharFilter(field_name='name', lookup_expr='iexact')
+    
+    class Meta:
+        model = Sector
+        fields = {
+            'name': ['icontains'],
+        }
+
+
 class StockFilter(filters.FilterSet):
     """
     FilterSet for Stock model.
     
     Provides filtering capabilities for stock ticker list views:
     - ticker: Exact match or contains (case-insensitive)
-    - sector: Exact match or contains (case-insensitive)
+    - sector__name: Exact match by sector name (case-insensitive)
+    - sector__name__icontains: Sector name contains (case-insensitive)
     - exchange__name: Exact match by exchange name (case-insensitive)
     - country: Exact match
     
     Example usage:
-        ?ticker=AAPL                    # Exact match (case-insensitive)
-        ?ticker__icontains=app          # Contains 'app' (case-insensitive)
-        ?sector=Technology              # Exact sector match (case-insensitive)
-        ?sector__icontains=tech         # Sector contains 'tech'
-        ?exchange__name=NASDAQ          # Exact exchange name match (case-insensitive)
-        ?country=US                     # Exact country match (case-insensitive)
-        ?sector=Technology&country=US   # Multiple filters combined
+        ?ticker=AAPL                          # Exact match (case-insensitive)
+        ?ticker__icontains=app                 # Contains 'app' (case-insensitive)
+        ?sector__name=Information Technology  # Exact sector name match (case-insensitive)
+        ?sector__name__icontains=tech           # Sector name contains 'tech'
+        ?exchange__name=NASDAQ                 # Exact exchange name match (case-insensitive)
+        ?country=US                            # Exact country match (case-insensitive)
+        ?sector__name=Technology&country=US    # Multiple filters combined
     """
     ticker = filters.CharFilter(field_name='ticker', lookup_expr='iexact')
-    sector = filters.CharFilter(field_name='sector', lookup_expr='iexact')
+    sector__name = filters.CharFilter(field_name='sector__name', lookup_expr='iexact')
     exchange__name = filters.CharFilter(field_name='exchange__name', lookup_expr='iexact')
     country = filters.CharFilter(field_name='country', lookup_expr='iexact')
     
@@ -66,7 +94,7 @@ class StockFilter(filters.FilterSet):
         model = Stock
         fields = {
             'ticker': ['icontains'],
-            'sector': ['icontains'],
+            'sector__name': ['icontains'],
         }
 
 

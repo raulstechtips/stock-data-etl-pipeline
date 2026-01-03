@@ -6,6 +6,7 @@ This module contains the API views for:
 - GET /runs - List all ingestion runs
 - GET /bulk-queue-runs - List all bulk queue runs
 - GET /exchanges - List all exchanges
+- GET /sectors - List all sectors
 - GET /runs/ticker/<ticker> - List runs for a specific ticker
 """
 
@@ -19,11 +20,12 @@ from rest_framework.generics import ListAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from api.filters import BulkQueueRunFilter, ExchangeFilter, StockFilter, StockIngestionRunFilter
-from api.models import BulkQueueRun, Exchange, Stock, StockIngestionRun
+from api.filters import BulkQueueRunFilter, ExchangeFilter, SectorFilter, StockFilter, StockIngestionRunFilter
+from api.models import BulkQueueRun, Exchange, Sector, Stock, StockIngestionRun
 from api.serializers import (
     BulkQueueRunSerializer,
     ExchangeSerializer,
+    SectorSerializer,
     StockIngestionRunSerializer,
     StockSerializer,
 )
@@ -70,6 +72,45 @@ class ExchangeListView(ListAPIView):
     filter_backends = [DjangoFilterBackend]
     filterset_class = ExchangeFilter
     queryset = Exchange.objects.all().order_by('-created_at')
+
+
+@method_decorator(cache_page(None, key_prefix='api:sector-list'), name='dispatch')
+class SectorListView(ListAPIView):
+    """
+    API endpoint for listing all sectors.
+    
+    GET /sectors
+    
+    Returns a paginated list of all sectors with cursor-based pagination.
+    Supports filtering by name (exact match and contains, both case-insensitive).
+    
+    Filtering capabilities:
+    - name: Exact sector name match (case-insensitive)
+    - name__icontains: Sector name contains (case-insensitive)
+    
+    Note: Sector names preserve case (unlike Exchange which normalizes to uppercase),
+    but filters work with any case input and will match correctly.
+    
+    Filters can be combined for precise queries. All filters work seamlessly with
+    cursor-based pagination.
+    
+    Example requests:
+        GET /api/sectors
+        GET /api/sectors?name=Information Technology
+        GET /api/sectors?name__icontains=technology
+        GET /api/sectors?name=Financials&name__icontains=Fin
+    
+    Caching:
+        Responses are cached indefinitely (no expiry) using cache_page decorator.
+        Each paginated page (with different cursor values) is cached separately with
+        unique cache keys. Cache is automatically invalidated when Sector or Stock
+        models are created, updated, or deleted via Django signals.
+    """
+    serializer_class = SectorSerializer
+    pagination_class = StandardCursorPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = SectorFilter
+    queryset = Sector.objects.all().order_by('-created_at')
 
 
 @method_decorator(cache_page(None, key_prefix='api:ticker-list'), name='dispatch')
