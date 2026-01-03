@@ -37,6 +37,7 @@ jobs:
     env:
       SECRET_KEY: "test-secret-key-for-ci-only-not-for-production"
       APP_ENV: "test"
+      LOG_LEVEL: "DEBUG"
       # Database connection for service container
       SQL_DATABASE: "test_db"
       SQL_USER: "test_user"
@@ -45,6 +46,7 @@ jobs:
       SQL_PORT: "5432"
       # Redis connection for service container
       REDIS_HOST: "localhost"
+      REDIS_PORT: "6379"
 
     steps:
       - name: Checkout code
