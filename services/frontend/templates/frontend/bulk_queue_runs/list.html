@@ -112,73 +112,73 @@
             </div>
             
             {% comment %}
-            <!-- Started At After Filter -->
-            <div 
-                x-data="{
-                    get value() {
-                        return $store.bulkQueueRunsList.filters.started_at_after || '';
-                    },
-                    label: 'Started After',
-                    onChange(dateValue) {
-                        $store.bulkQueueRunsList.filters.started_at_after = dateValue || '';
-                        // Auto-apply filters when date is selected
-                        $store.bulkQueueRunsList.applyFilters();
-                    }
-                }"
-            >
-                {% include 'components/shared/date_picker.html' %}
-            </div>
+                Started At After Filter
+                <!-- <div 
+                    x-data="{
+                        get value() {
+                            return $store.bulkQueueRunsList.filters.started_at_after || '';
+                        },
+                        label: 'Started After',
+                        onChange(dateValue) {
+                            $store.bulkQueueRunsList.filters.started_at_after = dateValue || '';
+                            // Auto-apply filters when date is selected
+                            $store.bulkQueueRunsList.applyFilters();
+                        }
+                    }"
+                >
+                    {% include 'components/shared/date_picker.html' %}
+                </div> -->
 
-            <!-- Started At Before Filter -->
-            <div 
-                x-data="{
-                    get value() {
-                        return $store.bulkQueueRunsList.filters.started_at_before || '';
-                    },
-                    label: 'Started Before',
-                    onChange(dateValue) {
-                        $store.bulkQueueRunsList.filters.started_at_before = dateValue || '';
-                        // Auto-apply filters when date is selected
-                        $store.bulkQueueRunsList.applyFilters();
-                    }
-                }"
-            >
-                {% include 'components/shared/date_picker.html' %}
-            </div>
+                <!-- Started At Before Filter -->
+                <!-- <div 
+                    x-data="{
+                        get value() {
+                            return $store.bulkQueueRunsList.filters.started_at_before || '';
+                        },
+                        label: 'Started Before',
+                        onChange(dateValue) {
+                            $store.bulkQueueRunsList.filters.started_at_before = dateValue || '';
+                            // Auto-apply filters when date is selected
+                            $store.bulkQueueRunsList.applyFilters();
+                        }
+                    }"
+                >
+                    {% include 'components/shared/date_picker.html' %}
+                </div> -->
 
-            <!-- Completed At After Filter -->
-            <div 
-                x-data="{
-                    get value() {
-                        return $store.bulkQueueRunsList.filters.completed_at_after || '';
-                    },
-                    label: 'Completed After',
-                    onChange(dateValue) {
-                        $store.bulkQueueRunsList.filters.completed_at_after = dateValue || '';
-                        // Auto-apply filters when date is selected
-                        $store.bulkQueueRunsList.applyFilters();
-                    }
-                }"
-            >
-                {% include 'components/shared/date_picker.html' %}
-            </div>
+                <!-- Completed At After Filter -->
+                <!-- <div 
+                    x-data="{
+                        get value() {
+                            return $store.bulkQueueRunsList.filters.completed_at_after || '';
+                        },
+                        label: 'Completed After',
+                        onChange(dateValue) {
+                            $store.bulkQueueRunsList.filters.completed_at_after = dateValue || '';
+                            // Auto-apply filters when date is selected
+                            $store.bulkQueueRunsList.applyFilters();
+                        }
+                    }"
+                >
+                    {% include 'components/shared/date_picker.html' %}
+                </div> -->
 
-            <!-- Completed At Before Filter -->
-            <div 
-                x-data="{
-                    get value() {
-                        return $store.bulkQueueRunsList.filters.completed_at_before || '';
-                    },
-                    label: 'Completed Before',
-                    onChange(dateValue) {
-                        $store.bulkQueueRunsList.filters.completed_at_before = dateValue || '';
-                        // Auto-apply filters when date is selected
-                        $store.bulkQueueRunsList.applyFilters();
-                    }
-                }"
-            >
-                {% include 'components/shared/date_picker.html' %}
-            </div>
+                <!-- Completed At Before Filter -->
+                <!-- <div 
+                    x-data="{
+                        get value() {
+                            return $store.bulkQueueRunsList.filters.completed_at_before || '';
+                        },
+                        label: 'Completed Before',
+                        onChange(dateValue) {
+                            $store.bulkQueueRunsList.filters.completed_at_before = dateValue || '';
+                            // Auto-apply filters when date is selected
+                            $store.bulkQueueRunsList.applyFilters();
+                        }
+                    }"
+                >
+                    {% include 'components/shared/date_picker.html' %}
+                </div> -->
             {% endcomment %}
             <!-- Is Completed Filter -->
             <div 
