@@ -62,25 +62,10 @@
             @submit.prevent="$store.bulkQueueRunsList.applyFilters()"
             class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-            <!-- Requested By (Exact) Filter -->
-            <div>
-                <label for="filter-requested-by" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Requested By (Exact)
-                </label>
-                <input
-                    type="text"
-                    id="filter-requested-by"
-                    x-model="$store.bulkQueueRunsList.filters.requested_by"
-                    placeholder="e.g., admin@example.com"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by exact requester"
-                />
-            </div>
-
             <!-- Requested By Contains Filter -->
             <div>
                 <label for="filter-requested-by-contains" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Requested By (Contains)
+                    Requested By
                 </label>
                 <input
                     type="text"
@@ -93,121 +78,162 @@
             </div>
 
             <!-- Created After Filter -->
-            <div>
-                <label for="filter-created-after" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Created After
-                </label>
-                <input
-                    type="date"
-                    id="filter-created-after"
-                    x-model="$store.bulkQueueRunsList.filters.created_after"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs created after date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.bulkQueueRunsList.filters.created_after || '';
+                    },
+                    label: 'Created After',
+                    onChange(dateValue) {
+                        $store.bulkQueueRunsList.filters.created_after = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
 
             <!-- Created Before Filter -->
-            <div>
-                <label for="filter-created-before" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Created Before
-                </label>
-                <input
-                    type="date"
-                    id="filter-created-before"
-                    x-model="$store.bulkQueueRunsList.filters.created_before"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs created before date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.bulkQueueRunsList.filters.created_before || '';
+                    },
+                    label: 'Created Before',
+                    onChange(dateValue) {
+                        $store.bulkQueueRunsList.filters.created_before = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
-
+            
+            {% comment %}
             <!-- Started At After Filter -->
-            <div>
-                <label for="filter-started-at-after" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Started After
-                </label>
-                <input
-                    type="date"
-                    id="filter-started-at-after"
-                    x-model="$store.bulkQueueRunsList.filters.started_at_after"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs started after date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.bulkQueueRunsList.filters.started_at_after || '';
+                    },
+                    label: 'Started After',
+                    onChange(dateValue) {
+                        $store.bulkQueueRunsList.filters.started_at_after = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
 
             <!-- Started At Before Filter -->
-            <div>
-                <label for="filter-started-at-before" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Started Before
-                </label>
-                <input
-                    type="date"
-                    id="filter-started-at-before"
-                    x-model="$store.bulkQueueRunsList.filters.started_at_before"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs started before date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.bulkQueueRunsList.filters.started_at_before || '';
+                    },
+                    label: 'Started Before',
+                    onChange(dateValue) {
+                        $store.bulkQueueRunsList.filters.started_at_before = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
 
             <!-- Completed At After Filter -->
-            <div>
-                <label for="filter-completed-at-after" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Completed After
-                </label>
-                <input
-                    type="date"
-                    id="filter-completed-at-after"
-                    x-model="$store.bulkQueueRunsList.filters.completed_at_after"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs completed after date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.bulkQueueRunsList.filters.completed_at_after || '';
+                    },
+                    label: 'Completed After',
+                    onChange(dateValue) {
+                        $store.bulkQueueRunsList.filters.completed_at_after = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
 
             <!-- Completed At Before Filter -->
-            <div>
-                <label for="filter-completed-at-before" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Completed Before
-                </label>
-                <input
-                    type="date"
-                    id="filter-completed-at-before"
-                    x-model="$store.bulkQueueRunsList.filters.completed_at_before"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs completed before date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.bulkQueueRunsList.filters.completed_at_before || '';
+                    },
+                    label: 'Completed Before',
+                    onChange(dateValue) {
+                        $store.bulkQueueRunsList.filters.completed_at_before = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
-
+            {% endcomment %}
             <!-- Is Completed Filter -->
-            <div>
-                <label for="filter-is-completed" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Completion Status
-                </label>
-                <select
-                    id="filter-is-completed"
-                    x-model="$store.bulkQueueRunsList.filters.is_completed"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by completion status"
-                >
-                    <option value="">All</option>
-                    <option value="true">Completed</option>
-                    <option value="false">Not Completed</option>
-                </select>
+            <div 
+                x-data="{
+                    get options() {
+                        return [
+                            { name: 'All', value: '' },
+                            { name: 'Completed', value: 'true' },
+                            { name: 'Not Completed', value: 'false' }
+                        ];
+                    },
+                    get selected() {
+                        return $store.bulkQueueRunsList.filters.is_completed || '';
+                    },
+                    get loading() {
+                        return $store.bulkQueueRunsList.loading;
+                    },
+                    placeholder: 'All',
+                    label: 'Completion Status',
+                    onChange(value) {
+                        $store.bulkQueueRunsList.filters.is_completed = value || '';
+                        // Auto-apply filters when completion status is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/dropdown_select.html' %}
             </div>
 
             <!-- Has Errors Filter -->
-            <div>
-                <label for="filter-has-errors" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Error Status
-                </label>
-                <select
-                    id="filter-has-errors"
-                    x-model="$store.bulkQueueRunsList.filters.has_errors"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by error presence"
-                >
-                    <option value="">All</option>
-                    <option value="true">Has Errors</option>
-                    <option value="false">No Errors</option>
-                </select>
+            <div 
+                x-data="{
+                    get options() {
+                        return [
+                            { name: 'All', value: '' },
+                            { name: 'Has Errors', value: 'true' },
+                            { name: 'No Errors', value: 'false' }
+                        ];
+                    },
+                    get selected() {
+                        return $store.bulkQueueRunsList.filters.has_errors || '';
+                    },
+                    get loading() {
+                        return $store.bulkQueueRunsList.loading;
+                    },
+                    placeholder: 'All',
+                    label: 'Error Status',
+                    onChange(value) {
+                        $store.bulkQueueRunsList.filters.has_errors = value || '';
+                        // Auto-apply filters when error status is selected
+                        $store.bulkQueueRunsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/dropdown_select.html' %}
             </div>
 
             <!-- Apply Filters Button -->

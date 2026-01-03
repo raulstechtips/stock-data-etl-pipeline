@@ -28,7 +28,6 @@ function defineBulkQueueRunsListStore() {
         
         // Filters - all filter fields from API Documentation.md lines 936-949
         filters: {
-            requested_by: '',
             requested_by__icontains: '',
             created_after: '',
             created_before: '',
@@ -74,15 +73,14 @@ function defineBulkQueueRunsListStore() {
                     } else if (key === 'created_after' || key === 'created_before' || 
                                key === 'started_at_after' || key === 'started_at_before' ||
                                key === 'completed_at_after' || key === 'completed_at_before') {
-                        // Handle date filters - convert date picker (YYYY-MM-DD) to ISO 8601
+                        // Handle date filters - convert date picker (YYYY-MM-DD) to UTC ISO 8601
                         if (value && value.trim() !== '') {
-                            // Date picker format is "YYYY-MM-DD"
-                            // Convert to ISO 8601 with 00:00:00 time (start of day)
+                            // Date picker format is "YYYY-MM-DD" (user's local timezone)
+                            // Convert local midnight to UTC ISO 8601 format
                             const dateValue = value.trim();
-                            // Validate it's in YYYY-MM-DD format
-                            if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-                                // Use 00:00:00 (start of day) for both filters
-                                activeFilters[key] = `${dateValue}T00:00:00Z`;
+                            const utcISO = window.dateUtils.dateToUTCISO(dateValue);
+                            if (utcISO) {
+                                activeFilters[key] = utcISO;
                             }
                         }
                     } else {
@@ -148,7 +146,6 @@ function defineBulkQueueRunsListStore() {
          */
         async clearFilters() {
             this.filters = {
-                requested_by: '',
                 requested_by__icontains: '',
                 created_after: '',
                 created_before: '',
