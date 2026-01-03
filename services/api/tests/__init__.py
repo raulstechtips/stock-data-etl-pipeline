@@ -29,7 +29,8 @@ from .views import (
     BulkQueueRunListAPITest,
     BulkQueueRunStatsDetailAPITest,
     StockDataAPITest,
-    ExchangeListAPITest
+    ExchangeListAPITest,
+    SectorListAPITest
 )
 from .filters import (
     TickerListFilterAPITest, 
@@ -42,7 +43,13 @@ from .auth import (
     AuthenticationRequiredAPITest,
     AuthenticatedAccessAPITest,
 )
-from .cache_invalidation import ExchangeListViewCacheTest, TickerListViewCacheTest, CacheInvalidationUtilityTest, CacheInvalidationSignalsTest
+from .cache_invalidation import (
+    ExchangeListViewCacheTest, 
+    TickerListViewCacheTest, 
+    CacheInvalidationUtilityTest, 
+    CacheInvalidationSignalsTest, 
+    SectorListViewCacheTest
+)
 
 __all__ = [
     'ExchangeModelTest',
@@ -77,5 +84,7 @@ __all__ = [
     'ExchangeListViewCacheTest', 
     'TickerListViewCacheTest', 
     'CacheInvalidationUtilityTest', 
-    'CacheInvalidationSignalsTest'
+    'CacheInvalidationSignalsTest',
+    'SectorListAPITest',
+    'SectorListViewCacheTest'
 ]

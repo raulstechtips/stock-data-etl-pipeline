@@ -24,7 +24,7 @@ from django.conf import settings
 from django.db import DatabaseError, transaction
 from django.db.utils import OperationalError
 
-from api.models import Exchange, Stock
+from api.models import Exchange, Sector, Stock
 from api.services.stock_ingestion_service import StockNotFoundError
 from workers.exceptions import (
     DeltaLakeReadError,
@@ -311,6 +311,12 @@ def _update_stock_with_metadata(
     4. Compares current exchange with new exchange
     5. Only updates if they differ
     
+    For the 'sector' field, this function:
+    1. Extracts the sector name from metadata_dict
+    2. Uses Sector.objects.get_or_create(name=sector_name) with name as-is (preserves case)
+    3. Compares current sector with new sector
+    4. Only updates if they differ
+    
     Args:
         stock_id: UUID of the Stock to update
         metadata_dict: Dictionary of metadata fields to update
@@ -368,6 +374,44 @@ def _update_stock_with_metadata(
                         extra={
                             "exchange_name": normalized_exchange_name,
                             "exchange_id": str(exchange.id),
+                            "stock_id": str(stock_id)
+                        }
+                    )
+            # Special handling for sector field (ForeignKey to Sector model)
+            elif field_name == 'sector' and new_value:
+                # Use sector name as-is (preserve case, no normalization)
+                sector_name = new_value
+                
+                # Get or create Sector instance
+                # get_or_create is atomic and handles race conditions
+                sector, created = Sector.objects.get_or_create(name=sector_name)
+                
+                # Compare current sector with new sector
+                # Only update if they differ (handles None case)
+                current_sector_id = stock.sector_id if stock.sector else None
+                new_sector_id = sector.id if sector else None
+                
+                if current_sector_id != new_sector_id:
+                    stock.sector = sector
+                    fields_updated.append(field_name)
+                    
+                    logger.info(
+                        "Sector will be updated",
+                        extra={
+                            "sector_name": sector_name,
+                            "sector_id": str(sector.id),
+                            "sector_created": created,
+                            "stock_id": str(stock_id),
+                            "current_sector_id": str(current_sector_id) if current_sector_id else None,
+                            "new_sector_id": str(new_sector_id)
+                        }
+                    )
+                else:
+                    logger.debug(
+                        "Sector unchanged, skipping update",
+                        extra={
+                            "sector_name": sector_name,
+                            "sector_id": str(sector.id),
                             "stock_id": str(stock_id)
                         }
                     )

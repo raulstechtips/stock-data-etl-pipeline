@@ -36,8 +36,8 @@ function defineStocksAPI() {
          * @param {object} filters - Optional filter parameters
          * @param {string} filters.ticker - Exact ticker match (case-insensitive)
          * @param {string} filters.ticker__icontains - Ticker contains substring (case-insensitive)
-         * @param {string} filters.sector - Exact sector match (case-insensitive)
-         * @param {string} filters.sector__icontains - Sector contains substring (case-insensitive)
+         * @param {string} filters.sector__name - Exact sector name match (case-insensitive)
+         * @param {string} filters.sector__name__icontains - Sector name contains substring (case-insensitive)
          * @param {string} filters.exchange__name - Exact exchange name match (case-insensitive)
          * @param {string} filters.country - Exact country match (case-insensitive)
          * @returns {Promise<object>} - Paginated response with next, previous, and results
@@ -48,12 +48,13 @@ function defineStocksAPI() {
          * // List stocks with filters
          * await $store.stocksAPI.listTickers(50, null, {
          *   ticker: 'AAPL',
-         *   sector: 'Technology'
+         *   sector__name: 'Information Technology'
          * });
          * 
          * // List stocks with contains filter
          * await $store.stocksAPI.listTickers(50, null, {
          *   ticker__icontains: 'app',
+         *   sector__name__icontains: 'tech',
          *   country: 'US'
          * });
          */
@@ -72,8 +73,8 @@ function defineStocksAPI() {
                     const filterKeys = [
                         'ticker',
                         'ticker__icontains',
-                        'sector',
-                        'sector__icontains',
+                        'sector__name',
+                        'sector__name__icontains',
                         'exchange__name',
                         'country'
                     ];

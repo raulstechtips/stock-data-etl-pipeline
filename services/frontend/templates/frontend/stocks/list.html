@@ -81,31 +81,31 @@
 
             <!-- Sector Filter -->
             <div>
-                <label for="filter-sector" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Sector (Exact)
+                <label for="filter-sector-name" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Sector Name (Exact)
                 </label>
                 <input
                     type="text"
-                    id="filter-sector"
-                    x-model="$store.stocksList.filters.sector"
-                    placeholder="e.g., Technology"
+                    id="filter-sector-name"
+                    x-model="$store.stocksList.filters.sector__name"
+                    placeholder="e.g., Information Technology"
                     class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by exact sector"
+                    aria-label="Filter by exact sector name"
                 />
             </div>
 
             <!-- Sector Contains Filter -->
             <div>
-                <label for="filter-sector-contains" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Sector (Contains)
+                <label for="filter-sector-name-contains" class="block text-sm font-medium text-theme-secondary mb-1">
+                    Sector Name (Contains)
                 </label>
                 <input
                     type="text"
-                    id="filter-sector-contains"
-                    x-model="$store.stocksList.filters.sector__icontains"
+                    id="filter-sector-name-contains"
+                    x-model="$store.stocksList.filters.sector__name__icontains"
                     placeholder="e.g., tech"
                     class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by sector contains"
+                    aria-label="Filter by sector name contains"
                 />
             </div>
 

@@ -30,8 +30,8 @@ function defineStocksListStore() {
         filters: {
             ticker: '',
             ticker__icontains: '',
-            sector: '',
-            sector__icontains: '',
+            sector__name: '',
+            sector__name__icontains: '',
             exchange__name: '',
             country: ''
         },
@@ -119,8 +119,8 @@ function defineStocksListStore() {
             this.filters = {
                 ticker: '',
                 ticker__icontains: '',
-                sector: '',
-                sector__icontains: '',
+                sector__name: '',
+                sector__name__icontains: '',
                 exchange__name: '',
                 country: ''
             };

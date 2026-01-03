@@ -23,7 +23,7 @@ from celery.exceptions import Retry
 from django.db import DatabaseError, OperationalError, transaction
 from django.test import TransactionTestCase
 
-from api.models import Exchange, Stock
+from api.models import Exchange, Sector, Stock
 from workers.exceptions import (
     DeltaLakeReadError,
     InvalidDataFormatError,
@@ -352,7 +352,9 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         
         # Verify database state was updated correctly
         self.stock.refresh_from_db()
-        self.assertEqual(self.stock.sector, 'Information Technology')
+        # Sector is now a ForeignKey
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
         self.assertEqual(self.stock.name, 'Apple Inc.')
         self.assertIsNotNone(self.stock.exchange)
         self.assertEqual(self.stock.exchange.name, 'NASDAQ')
@@ -376,7 +378,9 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         
         # Verify behavior: only specified fields updated, others unchanged
         self.stock.refresh_from_db()
-        self.assertEqual(self.stock.sector, 'Technology')
+        # Sector is now a ForeignKey
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Technology')
         self.assertEqual(self.stock.name, 'Apple Inc.')
         self.assertIsNone(self.stock.exchange)  # Not updated
 
@@ -444,14 +448,15 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         
         # Verify database state
         self.stock.refresh_from_db()
-        self.assertEqual(self.stock.sector, 'Technology')
+        self.assertEqual(self.stock.sector.name, 'Technology')
         self.assertFalse(hasattr(self.stock, 'invalid_field'))
 
     def test_unchanged_fields_do_not_trigger_save(self):
         """Test that unchanged fields don't trigger save, preventing unnecessary cache invalidation."""
         # Arrange - Set initial values
         nasdaq = Exchange.objects.create(name='NASDAQ')
-        self.stock.sector = 'Information Technology'
+        tech_sector = Sector.objects.create(name='Information Technology')
+        self.stock.sector = tech_sector
         self.stock.name = 'Apple Inc.'
         self.stock.exchange = nasdaq
         self.stock.country = 'US'
@@ -476,7 +481,9 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         
         # Verify database state unchanged
         self.stock.refresh_from_db()
-        self.assertEqual(self.stock.sector, 'Information Technology')
+        # Sector is now a ForeignKey
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
         self.assertEqual(self.stock.name, 'Apple Inc.')
         self.assertEqual(self.stock.exchange.id, nasdaq.id)
         self.assertEqual(self.stock.country, 'US')
@@ -492,7 +499,8 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         """Test that only changed fields are updated, unchanged ones are skipped."""
         # Arrange - Set initial values
         nasdaq = Exchange.objects.create(name='NASDAQ')
-        self.stock.sector = 'Information Technology'
+        tech_sector = Sector.objects.create(name='Information Technology')
+        self.stock.sector = tech_sector
         self.stock.name = 'Apple Inc.'
         self.stock.exchange = nasdaq
         self.stock.country = 'US'
@@ -500,7 +508,7 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         
         # Metadata has some changed values and some unchanged
         metadata_dict = {
-            'sector': 'Technology',  # Changed
+            'sector': 'Technology',  # Changed (will create new Sector)
             'name': 'Apple Inc.',  # Unchanged
             'exchange': 'NASDAQ',  # Unchanged
             'country': 'CA',  # Changed
@@ -516,7 +524,9 @@ class UpdateStockWithMetadataTests(TransactionTestCase):
         
         # Verify database state - only changed fields updated
         self.stock.refresh_from_db()
-        self.assertEqual(self.stock.sector, 'Technology')  # Changed
+        # Sector is now a ForeignKey
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Technology')  # Changed
         self.assertEqual(self.stock.name, 'Apple Inc.')  # Unchanged
         self.assertEqual(self.stock.exchange.id, nasdaq.id)  # Unchanged
         self.assertEqual(self.stock.country, 'CA')  # Changed
@@ -751,6 +761,239 @@ class ExchangeHandlingInMetadataWorkerTests(TransactionTestCase):
         self.assertEqual(self.stock.exchange.name, 'NASDAQ')
 
 
+class SectorHandlingInMetadataWorkerTests(TransactionTestCase):
+    """Tests for Sector ForeignKey handling in update_stock_metadata task."""
+
+    def setUp(self):
+        """Create test stock."""
+        self.stock = Stock.objects.create(ticker='AAPL')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_sector_created_when_updating_stock_metadata(self, mock_read):
+        """Test that Sector is created when updating stock metadata with sector name."""
+        # Arrange
+        metadata_dict = {
+            'sector': 'Information Technology',
+            'name': 'Apple Inc.',
+            'exchange': 'NASDAQ',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify Sector was created
+        self.assertTrue(result['updated'])
+        self.assertIn('sector', result['fields_updated'])
+        
+        # Verify Sector exists in database
+        self.assertTrue(Sector.objects.filter(name='Information Technology').exists())
+        
+        # Verify Stock.sector ForeignKey is set
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_existing_sector_reused_when_updating_stock_metadata(self, mock_read):
+        """Test that existing Sector is reused when updating stock metadata with same sector name."""
+        # Arrange - Create sector first
+        existing_sector = Sector.objects.create(name='Information Technology')
+        
+        metadata_dict = {
+            'sector': 'Information Technology',
+            'name': 'Apple Inc.',
+            'exchange': 'NASDAQ',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify existing Sector was reused (not created)
+        self.assertTrue(result['updated'])
+        self.assertIn('sector', result['fields_updated'])
+        
+        # Verify only one Sector exists
+        self.assertEqual(Sector.objects.filter(name='Information Technology').count(), 1)
+        
+        # Verify Stock.sector ForeignKey points to existing Sector
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.sector.id, existing_sector.id)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_sector_name_preserves_case_in_get_or_create(self, mock_read):
+        """Test sector name preserves case in get_or_create (case-sensitive matching, unlike Exchange)."""
+        # Arrange - Create sector with specific case
+        existing_sector = Sector.objects.create(name='Information Technology')
+        
+        # Metadata has different case sector name - should create new (case-sensitive)
+        metadata_dict = {
+            'sector': 'information technology',  # lowercase - different case
+            'name': 'Apple Inc.',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify new Sector was created (case-sensitive, unlike Exchange)
+        self.assertTrue(result['updated'])
+        
+        # Verify two sectors exist (different cases)
+        self.assertEqual(Sector.objects.count(), 2)
+        
+        # Verify Stock.sector ForeignKey points to new Sector (different case)
+        self.stock.refresh_from_db()
+        self.assertNotEqual(self.stock.sector.id, existing_sector.id)
+        self.assertEqual(self.stock.sector.name, 'information technology')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_sector_name_preserves_case_exact_match(self, mock_read):
+        """Test sector name preserves case when exact match exists."""
+        # Arrange - Create sector with specific case
+        existing_sector = Sector.objects.create(name='Information Technology')
+        
+        # Metadata has exact same case - should reuse existing
+        metadata_dict = {
+            'sector': 'Information Technology',  # exact match
+            'name': 'Apple Inc.',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify existing Sector was reused (exact case match)
+        self.assertTrue(result['updated'])
+        
+        # Verify only one Sector exists
+        self.assertEqual(Sector.objects.count(), 1)
+        
+        # Verify Stock.sector ForeignKey points to existing Sector
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.sector.id, existing_sector.id)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_stock_sector_foreignkey_set_correctly_after_metadata_update(self, mock_read):
+        """Test that stock.sector ForeignKey is set correctly after metadata update."""
+        # Arrange
+        metadata_dict = {
+            'sector': 'Financials',
+            'exchange': 'NYSE',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify Stock.sector ForeignKey is set
+        self.assertTrue(result['updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.sector)
+        self.assertIsInstance(self.stock.sector, Sector)
+        self.assertEqual(self.stock.sector.name, 'Financials')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_sector_foreignkey_updated_when_sector_name_changes(self, mock_read):
+        """Test that sector ForeignKey is updated when sector name changes in metadata."""
+        # Arrange - Set initial sector
+        tech_sector = Sector.objects.create(name='Information Technology')
+        self.stock.sector = tech_sector
+        self.stock.save()
+        
+        # Metadata has different sector
+        metadata_dict = {
+            'sector': 'Financials',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify Stock.sector ForeignKey was updated
+        self.assertTrue(result['updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Financials')
+        self.assertNotEqual(self.stock.sector.id, tech_sector.id)
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_handling_of_sector_field_absent_in_metadata(self, mock_read):
+        """Test handling of sector field when absent in metadata_dict."""
+        # Arrange - Set initial sector
+        tech_sector = Sector.objects.create(name='Information Technology')
+        self.stock.sector = tech_sector
+        self.stock.save()
+        
+        # Metadata does not include sector field
+        metadata_dict = {
+            'name': 'Apple Inc.',
+            'exchange': 'NASDAQ',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify sector was not modified
+        self.assertTrue(result['updated'])
+        self.assertNotIn('sector', result['fields_updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.sector.id, tech_sector.id)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
+
+    @patch('workers.tasks.update_stock_metadata._read_metadata_from_delta_lake')
+    def test_handling_of_sector_field_none_in_metadata(self, mock_read):
+        """Test handling of sector field when None in metadata_dict."""
+        # Arrange - Set initial sector
+        tech_sector = Sector.objects.create(name='Information Technology')
+        self.stock.sector = tech_sector
+        self.stock.save()
+        
+        # Metadata has None for sector (should be filtered out by _read_metadata_from_delta_lake)
+        # But test the behavior if it somehow gets through
+        metadata_dict = {
+            'name': 'Apple Inc.',
+        }
+        mock_read.return_value = metadata_dict
+
+        # Act
+        result = update_stock_metadata(self.stock.ticker)
+
+        # Assert - Verify sector was not modified
+        self.assertTrue(result['updated'])
+        
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.sector.id, tech_sector.id)
+
+    def test_transaction_safety_when_creating_sector(self):
+        """Test transaction safety when creating Sector in update_stock_metadata."""
+        # Arrange
+        metadata_dict = {
+            'sector': 'Information Technology',
+        }
+
+        # Act - Call _update_stock_with_metadata directly
+        fields_updated = _update_stock_with_metadata(self.stock.id, metadata_dict)
+
+        # Assert - Verify Sector was created and Stock was updated atomically
+        self.assertIn('sector', fields_updated)
+        
+        # Verify Sector exists
+        self.assertTrue(Sector.objects.filter(name='Information Technology').exists())
+        
+        # Verify Stock.sector ForeignKey is set
+        self.stock.refresh_from_db()
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
+
+
 class MetadataWorkerIntegrationTests(TransactionTestCase):
     """Integration tests for the complete metadata worker flow."""
 
@@ -784,7 +1027,9 @@ class MetadataWorkerIntegrationTests(TransactionTestCase):
         
         # Verify complete database state after integration
         self.stock.refresh_from_db()
-        self.assertEqual(self.stock.sector, 'Information Technology')
+        # Sector is now a ForeignKey, not a CharField
+        self.assertIsNotNone(self.stock.sector)
+        self.assertEqual(self.stock.sector.name, 'Information Technology')
         self.assertEqual(self.stock.name, 'Apple Inc.')
         # Exchange is now a ForeignKey, not a CharField
         self.assertIsNotNone(self.stock.exchange)

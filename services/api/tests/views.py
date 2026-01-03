@@ -20,7 +20,7 @@ from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Sector, Stock, StockIngestionRun
 
 User = get_user_model()
 
@@ -426,10 +426,13 @@ class TickerDetailAPITest(APITestCase):
         )
         self.client.force_authenticate(user=self.user)
         
+        # Create sector
+        self.sector = Sector.objects.create(name='Technology')
+        
         self.stock = Stock.objects.create(
             ticker='AAPL',
             name='Apple Inc.',
-            sector='Technology'
+            sector=self.sector
         )
 
     def test_get_ticker_detail(self):
@@ -440,7 +443,8 @@ class TickerDetailAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['ticker'], 'AAPL')
         self.assertEqual(response.data['name'], 'Apple Inc.')
-        self.assertEqual(response.data['sector'], 'Technology')
+        self.assertEqual(response.data['sector'], self.sector.id)
+        self.assertEqual(response.data['sector_name'], 'Technology')
 
     def test_get_ticker_detail_case_insensitive(self):
         """Test that ticker detail lookup is case-insensitive."""
@@ -1348,6 +1352,209 @@ class ExchangeListAPITest(APITestCase):
         self.assertIn('results', response.data)
         exchange_names = [item['name'] for item in response.data['results']]
         self.assertIn('TESTEXCHANGE', exchange_names)
+
+
+class SectorListAPITest(APITestCase):
+    """Tests for the GET /api/sectors endpoint."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create and authenticate user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        
+        # Clear cache before each test to ensure test isolation
+        cache.clear()
+        
+        # Create multiple sectors for testing
+        self.sector1 = Sector.objects.create(name='Information Technology')
+        self.sector2 = Sector.objects.create(name='Financials')
+        self.sector3 = Sector.objects.create(name='Healthcare')
+
+    def test_list_sectors(self):
+        """Test listing all sectors."""
+        url = reverse('api:sector-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 3)
+        
+        # Verify sector data
+        sector_names = [item['name'] for item in response.data['results']]
+        self.assertIn('Information Technology', sector_names)
+        self.assertIn('Financials', sector_names)
+        self.assertIn('Healthcare', sector_names)
+
+    def test_list_sectors_empty(self):
+        """Test listing sectors when none exist."""
+        Sector.objects.all().delete()
+        
+        url = reverse('api:sector-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_sectors_pagination(self):
+        """Test cursor pagination for sectors."""
+        # Create more sectors to test pagination
+        for i in range(55):
+            Sector.objects.create(name=f'Sector {i:02d}')
+        
+        url = reverse('api:sector-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIn('next', response.data)
+        # Default page size is 50
+        self.assertEqual(len(response.data['results']), 50)
+        
+        # Test next page
+        if response.data['next']:
+            next_response = self.client.get(response.data['next'])
+            self.assertEqual(next_response.status_code, status.HTTP_200_OK)
+            self.assertGreater(len(next_response.data['results']), 0)
+
+    def test_list_sectors_ordering(self):
+        """Test that sectors are ordered by -created_at (newest first)."""
+        # Create a new sector (should appear first)
+        newest_sector = Sector.objects.create(name='Newest Sector')
+        
+        url = reverse('api:sector-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        # First result should be the newest
+        self.assertEqual(response.data['results'][0]['name'], 'Newest Sector')
+        self.assertEqual(response.data['results'][0]['id'], str(newest_sector.id))
+
+    def test_list_sectors_filter_name_exact(self):
+        """Test filtering sectors by exact name match (case-insensitive)."""
+        url = reverse('api:sector-list')
+        response = self.client.get(url, {'name': 'Information Technology'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'Information Technology')
+
+    def test_list_sectors_filter_name_exact_case_insensitive(self):
+        """Test filtering sectors by exact name match is case-insensitive."""
+        url = reverse('api:sector-list')
+        # Test lowercase
+        response = self.client.get(url, {'name': 'information technology'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'Information Technology')
+        
+        # Test mixed case
+        response = self.client.get(url, {'name': 'FiNaNcIaLs'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'Financials')
+
+    def test_list_sectors_filter_name_icontains(self):
+        """Test filtering sectors by name contains (case-insensitive)."""
+        url = reverse('api:sector-list')
+        response = self.client.get(url, {'name__icontains': 'Tech'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        # Should match Information Technology
+        sector_names = [item['name'] for item in response.data['results']]
+        self.assertIn('Information Technology', sector_names)
+
+    def test_list_sectors_filter_name_icontains_case_insensitive(self):
+        """Test filtering sectors by name contains is case-insensitive."""
+        url = reverse('api:sector-list')
+        # Test lowercase
+        response = self.client.get(url, {'name__icontains': 'tech'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        sector_names = [item['name'] for item in response.data['results']]
+        self.assertIn('Information Technology', sector_names)
+        
+        # Test mixed case
+        response = self.client.get(url, {'name__icontains': 'FiN'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        sector_names = [item['name'] for item in response.data['results']]
+        self.assertIn('Financials', sector_names)
+
+    def test_list_sectors_filter_multiple_filters(self):
+        """Test combining multiple filters."""
+        url = reverse('api:sector-list')
+        # Filter by name contains 'Tech' and exact name 'Information Technology'
+        response = self.client.get(url, {'name__icontains': 'Tech', 'name': 'Information Technology'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'Information Technology')
+
+    def test_list_sectors_filter_no_match(self):
+        """Test filtering sectors with no matching results."""
+        url = reverse('api:sector-list')
+        response = self.client.get(url, {'name': 'NONEXISTENT'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_list_sectors_response_format_matches_serializer(self):
+        """Test that response format matches SectorSerializer output."""
+        url = reverse('api:sector-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        
+        if len(response.data['results']) > 0:
+            result = response.data['results'][0]
+            # Verify all expected fields are present
+            self.assertIn('id', result)
+            self.assertIn('name', result)
+            self.assertIn('created_at', result)
+            self.assertIn('updated_at', result)
+
+    def test_list_sectors_preserves_case(self):
+        """Test that sector names preserve case (unlike Exchange which normalizes)."""
+        # Create sector with mixed case (should preserve case)
+        sector = Sector.objects.create(name='MixedCase Sector')
+        # Verify it preserved case
+        sector.refresh_from_db()
+        self.assertEqual(sector.name, 'MixedCase Sector')
+        
+        url = reverse('api:sector-list')
+        # Filter should work with any case
+        response = self.client.get(url, {'name': 'mixedcase sector'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['name'], 'MixedCase Sector')
+        
+        # Also test with contains
+        response = self.client.get(url, {'name__icontains': 'mixed'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        sector_names = [item['name'] for item in response.data['results']]
+        self.assertIn('MixedCase Sector', sector_names)
 
 
 class BulkQueueRunStatsDetailAPITest(APITestCase):

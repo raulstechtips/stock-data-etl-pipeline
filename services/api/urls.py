@@ -11,6 +11,7 @@ Endpoints:
     POST /ticker/queue                              - Queue a stock for ingestion
     POST /ticker/queue/all                          - Queue all stocks for ingestion (bulk)
     GET  /exchanges                                 - List all exchanges
+    GET  /sectors                                   - List all sectors
     GET  /runs                                      - List all ingestion runs
     GET  /runs/ticker/<ticker>                      - List runs for a specific ticker
     GET  /run/<run_id>/detail                       - Get details of a specific run
@@ -29,6 +30,7 @@ from api.views import (
     QueueForFetchView,
     RunDetailView,
     RunListView,
+    SectorListView,
     StockDataView,
     StockStatusView,
     TickerDetailView,
@@ -77,6 +79,13 @@ urlpatterns = [
         'exchanges',
         ExchangeListView.as_view(),
         name='exchange-list'
+    ),
+    
+    # Sector list endpoint
+    path(
+        'sectors',
+        SectorListView.as_view(),
+        name='sector-list'
     ),
     
     # Run list and detail endpoints
