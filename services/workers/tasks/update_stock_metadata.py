@@ -97,7 +97,7 @@ def update_stock_metadata(self, ticker: str) -> UpdateStockMetadataResult:
             stock = Stock.objects.get(ticker=ticker)
             stock_id = stock.id
             
-            logger.info(
+            logger.debug(
                 "Found stock for metadata update",
                 extra={"ticker": ticker, "stock_id": str(stock_id)}
             )
@@ -113,7 +113,7 @@ def update_stock_metadata(self, ticker: str) -> UpdateStockMetadataResult:
             metadata_dict = _read_metadata_from_delta_lake(ticker)
             
             if not metadata_dict:
-                logger.info(
+                logger.warning(
                     "No metadata found in Delta Lake for ticker",
                     extra={"ticker": ticker}
                 )
@@ -238,7 +238,7 @@ def _read_metadata_from_delta_lake(ticker: str) -> Dict[str, Any] | None:
         )
         
         if len(metadata_df) == 0:
-            logger.info(
+            logger.debug(
                 "No metadata record found for ticker in Delta Lake",
                 extra={"ticker": ticker}
             )
@@ -270,7 +270,7 @@ def _read_metadata_from_delta_lake(ticker: str) -> Dict[str, Any] | None:
         # Remove None values (fields not present in Delta Lake)
         metadata_fields = {k: v for k, v in metadata_fields.items() if v is not None}
         
-        logger.info(
+        logger.debug(
             "Read metadata from Delta Lake",
             extra={"ticker": ticker, "fields": list(metadata_fields.keys())}
         )
@@ -357,7 +357,7 @@ def _update_stock_with_metadata(
                     stock.exchange = exchange
                     fields_updated.append(field_name)
                     
-                    logger.info(
+                    logger.debug(
                         "Exchange will be updated",
                         extra={
                             "exchange_name": normalized_exchange_name,
@@ -395,7 +395,7 @@ def _update_stock_with_metadata(
                     stock.sector = sector
                     fields_updated.append(field_name)
                     
-                    logger.info(
+                    logger.debug(
                         "Sector will be updated",
                         extra={
                             "sector_name": sector_name,
@@ -452,7 +452,7 @@ def _update_stock_with_metadata(
         # Only save if there are actual changes
         if fields_updated:
             stock.save(update_fields=fields_updated + ['updated_at'])
-            logger.info(
+            logger.debug(
                 "Updated Stock fields",
                 extra={
                     "stock_id": str(stock_id),
@@ -461,7 +461,7 @@ def _update_stock_with_metadata(
                 }
             )
         else:
-            logger.info(
+            logger.debug(
                 "No fields to update",
                 extra={"stock_id": str(stock_id), "ticker": stock.ticker}
             )

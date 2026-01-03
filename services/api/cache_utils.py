@@ -119,7 +119,7 @@ def invalidate_list_view_cache(view_name: str) -> None:
         # Delete all matching keys
         if keys_to_delete:
             deleted_count = redis_client.delete(*keys_to_delete)
-            logger.info(
+            logger.debug(
                 f"Invalidated cache for view '{view_name}': deleted {deleted_count} cache key(s)",
                 extra={
                     'view_name': view_name,

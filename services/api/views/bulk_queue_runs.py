@@ -98,7 +98,7 @@ class BulkQueueRunStatsDetailView(APIView):
         cached_data = cache.get(cache_key)
         if cached_data is not None:
             elapsed_time = (time.time() - start_time) * 1000  # Convert to milliseconds
-            logger.info(
+            logger.debug(
                 "Bulk queue run stats retrieved from cache",
                 extra={
                     'bulk_queue_run_id': str(bulk_queue_run_uuid),
@@ -109,7 +109,7 @@ class BulkQueueRunStatsDetailView(APIView):
             return Response(cached_data, status=status.HTTP_200_OK)
         
         # Cache miss - perform expensive aggregation
-        logger.info(
+        logger.debug(
             "Bulk queue run stats cache miss - performing aggregation",
             extra={'bulk_queue_run_id': str(bulk_queue_run_uuid), 'cache_key': cache_key}
         )
@@ -144,7 +144,7 @@ class BulkQueueRunStatsDetailView(APIView):
         cache.set(cache_key, serialized_data, self.cache_ttl)
         
         elapsed_time = (time.time() - start_time) * 1000  # Convert to milliseconds
-        logger.info(
+        logger.debug(
             "Bulk queue run stats aggregated and cached",
             extra={
                 'bulk_queue_run_id': str(bulk_queue_run_uuid),
@@ -221,7 +221,7 @@ class QueueAllStocksForFetchView(APIView):
             try:
                 exchange_instance, created = Exchange.objects.get_or_create(name=exchange_name)
                 if created:
-                    logger.info(
+                    logger.debug(
                         "Created new Exchange during queue all stocks operation",
                         extra={'exchange_name': exchange_name}
                     )
@@ -244,7 +244,7 @@ class QueueAllStocksForFetchView(APIView):
             # Filter stocks by exchange
             stocks_queryset = stocks_queryset.filter(exchange=exchange_instance)
             
-            logger.info(
+            logger.debug(
                 "Filtering stocks by exchange for queue all stocks operation",
                 extra={
                     'exchange_name': exchange_name,
@@ -281,7 +281,7 @@ class QueueAllStocksForFetchView(APIView):
                 exchange_name=exchange_name
             )
             
-            logger.info(
+            logger.debug(
                 "Background worker task queued successfully for bulk queue operation",
                 extra={
                     'bulk_queue_run_id': str(bulk_run.id),

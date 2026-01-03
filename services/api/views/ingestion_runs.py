@@ -182,7 +182,7 @@ class QueueForFetchView(APIView):
                 )
         else:
             # Active run already exists, don't trigger a new task
-            logger.info(
+            logger.debug(
                 "Stock already queued - returning existing run",
                 extra={
                     'ticker': ticker.upper(),
@@ -247,7 +247,7 @@ class RunDetailView(APIView):
         try:
             run = self.service.get_run_by_id(run_uuid)
             serializer = StockIngestionRunSerializer(run)
-            logger.info(
+            logger.debug(
                 "Run details retrieved successfully",
                 extra={
                     'run_id': str(run_uuid),
