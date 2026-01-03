@@ -282,7 +282,7 @@ function defineRunsListStore() {
                 // Reset pagination and reload
                 this.nextCursor = null;
                 this.previousCursor = null;
-                this.loadRuns(null);
+                this.loadRuns(null).catch(err => console.error('Failed to reload runs:', err));
                 return;
             }
 
@@ -292,7 +292,7 @@ function defineRunsListStore() {
                 this.nextCursor = null;
                 this.previousCursor = null;
                 // Load runs with updated filter
-                this.loadRuns(null);
+                this.loadRuns(null).catch(err => console.error('Failed to reload runs:', err));
                 // Clear timer
                 this._debounceTimers[filterKey] = null;
             }, this.debounceDelay);

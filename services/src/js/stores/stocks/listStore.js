@@ -228,7 +228,7 @@ function defineStocksListStore() {
                 // Reset pagination and reload
                 this.nextCursor = null;
                 this.previousCursor = null;
-                this.loadStocks(null);
+                this.loadStocks(null).catch(err => console.error('Failed to reload stocks:', err));
                 return;
             }
 
@@ -238,7 +238,7 @@ function defineStocksListStore() {
                 this.nextCursor = null;
                 this.previousCursor = null;
                 // Load stocks with updated filter
-                this.loadStocks(null);
+                this.loadStocks(null).catch(err => console.error('Failed to reload stocks:', err));
                 // Clear timer
                 this._debounceTimers[filterKey] = null;
             }, this.debounceDelay);
