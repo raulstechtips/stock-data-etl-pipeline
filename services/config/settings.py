@@ -581,19 +581,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Logging Configuration
 # Validate LOG_LEVEL environment variable
-LOG_LEVEL = os.environ.get("LOG_LEVEL", 'INFO')
-if not LOG_LEVEL:
-    raise ImproperlyConfigured("LOG_LEVEL environment variable is required")
-
+LOG_LEVEL = os.environ.get("LOG_LEVEL", 'INFO').strip().upper()
 # Validate that LOG_LEVEL is one of Django's valid log levels
 VALID_LOG_LEVELS = frozenset(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
-if LOG_LEVEL.upper() not in VALID_LOG_LEVELS:
+if LOG_LEVEL not in VALID_LOG_LEVELS:
     raise ImproperlyConfigured(
         f"LOG_LEVEL must be one of {VALID_LOG_LEVELS}, got: {LOG_LEVEL}"
     )
-
-# Normalize to uppercase for consistency
-LOG_LEVEL = LOG_LEVEL.upper()
 
 LOGGING = {
     'version': 1,
