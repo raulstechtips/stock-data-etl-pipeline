@@ -51,8 +51,10 @@
         },
         updateCalendarView() {
             const currentValue = this.getCurrentValue();
-            const date = currentValue ? new Date(currentValue + 'T00:00:00') : new Date();
-            if (isNaN(date.getTime())) date = new Date();
+            let date = currentValue ? new Date(currentValue + 'T00:00:00') : new Date();
+            if (isNaN(date.getTime())) {
+                date = new Date();
+            }
             
             this.calendarYear = date.getFullYear();
             this.calendarMonth = date.getMonth();
