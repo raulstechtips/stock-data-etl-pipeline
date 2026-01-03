@@ -34,23 +34,13 @@
         emptyText: 'No options available',
         loadingText: typeof loadingText !== 'undefined' ? loadingText : 'Loading...',
         init() {
-            // Close dropdown when clicking outside
+            // Watch for dropdown opening to trigger lazy loading
             this.$watch('open', value => {
                 if (value) {
                     // Call onLoad callback if provided (for lazy loading)
                     if (typeof onLoad === 'function') {
                         onLoad();
                     }
-                    // Close on outside click
-                    this.$nextTick(() => {
-                        const handleClickOutside = (e) => {
-                            if (!this.$el.contains(e.target)) {
-                                this.open = false;
-                                document.removeEventListener('click', handleClickOutside);
-                            }
-                        };
-                        setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
-                    });
                 }
             });
         },
