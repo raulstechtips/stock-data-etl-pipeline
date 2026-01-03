@@ -184,7 +184,7 @@
         <!-- Options -->
         <div x-show="!loading && options && options.length > 0">
             <!-- Options List -->
-            <template x-for="option in options" :key="getOptionValue(option)">
+            <template x-for="(option, idx) in options" :key="getOptionValue(option) + '-' + idx">
                 <button
                     type="button"
                     @click="selectOption(getOptionValue(option))"
