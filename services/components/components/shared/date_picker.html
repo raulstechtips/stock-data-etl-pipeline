@@ -1,0 +1,271 @@
+<!-- Date Picker Component -->
+<!-- 
+  Reusable date picker component with PinesUI-style design that inherits from parent x-data context.
+  
+  Usage:
+  <div x-data="{ 
+      value: '',
+      onChange: (value) => {},
+      label: 'Date'
+  }">
+      { include 'components/shared/date_picker.html' }
+  </div>
+  
+  Required parent x-data properties:
+  - value: current date value (YYYY-MM-DD format) or getter function
+  - onChange: function to call when date is selected (value) => {}
+  
+  Optional parent x-data properties:
+  - label: string for label (if provided, label is rendered)
+  - placeholder: string placeholder text (default: 'Select date')
+  - disabled: boolean to disable date picker
+  - min: minimum date (YYYY-MM-DD format)
+  - max: maximum date (YYYY-MM-DD format)
+-->
+
+<div 
+    x-data="{ 
+        open: false,
+        // Local calendar view state (for navigation)
+        calendarYear: null,
+        calendarMonth: null,
+        init() {
+            // Initialize calendar view to current value or today
+            this.updateCalendarView();
+            
+            // Close calendar when clicking outside
+            this.$watch('open', value => {
+                if (value) {
+                    this.updateCalendarView();
+                    this.$nextTick(() => {
+                        const handleClickOutside = (e) => {
+                            if (!this.$el.contains(e.target)) {
+                                this.open = false;
+                                document.removeEventListener('click', handleClickOutside);
+                            }
+                        };
+                        setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
+                    });
+                }
+            });
+        },
+        updateCalendarView() {
+            const currentValue = this.getCurrentValue();
+            let date = currentValue ? new Date(currentValue + 'T00:00:00') : new Date();
+            if (isNaN(date.getTime())) {
+                date = new Date();
+            }
+            
+            this.calendarYear = date.getFullYear();
+            this.calendarMonth = date.getMonth();
+        },
+        getCurrentValue() {
+            return typeof value === 'function' ? value() : (value || '');
+        },
+        formatDisplayDate(dateString) {
+            if (!dateString) return '';
+            // Format YYYY-MM-DD to a more readable format
+            try {
+                const date = new Date(dateString + 'T00:00:00');
+                if (isNaN(date.getTime())) return dateString;
+                return date.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+            } catch {
+                return dateString;
+            }
+        },
+        handleDateSelect(selectedDate) {
+            if (typeof onChange === 'function') {
+                onChange(selectedDate);
+            } else {
+                if (typeof value === 'function') {
+                    // If value is a getter, we can't set it directly
+                    // The parent should handle this via onChange
+                } else {
+                    value = selectedDate;
+                }
+            }
+            this.open = false;
+        },
+        clearDate() {
+            this.handleDateSelect('');
+        },
+        getDaysInMonth(year, month) {
+            return new Date(year, month + 1, 0).getDate();
+        },
+        getFirstDayOfMonth(year, month) {
+            return new Date(year, month, 1).getDay();
+        },
+        get calendarData() {
+            // Ensure calendarYear and calendarMonth are set
+            if (this.calendarYear === null || this.calendarMonth === null) {
+                this.updateCalendarView();
+            }
+            
+            const year = this.calendarYear || new Date().getFullYear();
+            const month = this.calendarMonth !== null ? this.calendarMonth : new Date().getMonth();
+            const daysInMonth = this.getDaysInMonth(year, month);
+            const firstDay = this.getFirstDayOfMonth(year, month);
+            
+            const days = [];
+            // Add empty cells for days before the first day of the month
+            for (let i = 0; i < firstDay; i++) {
+                days.push({ isEmpty: true });
+            }
+            // Add days of the month
+            for (let day = 1; day <= daysInMonth; day++) {
+                days.push({ day, year, month, isEmpty: false });
+            }
+            
+            return { year, month, days };
+        },
+        isSelected(day, year, month) {
+            const currentValue = this.getCurrentValue();
+            if (!currentValue) return false;
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            return dateStr === currentValue;
+        },
+        isToday(day, year, month) {
+            const today = new Date();
+            return day === today.getDate() && 
+                   month === today.getMonth() && 
+                   year === today.getFullYear();
+        },
+        selectDate(day, year, month) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            this.handleDateSelect(dateStr);
+        },
+        navigateMonth(direction) {
+            const newDate = new Date(this.calendarYear, this.calendarMonth + direction, 1);
+            this.calendarYear = newDate.getFullYear();
+            this.calendarMonth = newDate.getMonth();
+        },
+        getMonthName(month) {
+            const date = new Date(2000, month, 1);
+            return date.toLocaleDateString('en-US', { month: 'long' });
+        },
+        getDayNumber(dayData) {
+            return dayData && !dayData.isEmpty && dayData.day ? dayData.day : '';
+        },
+        canSelectDay(dayData) {
+            return dayData && !dayData.isEmpty;
+        }
+    }"
+    class="relative"
+>
+    <!-- Label (if provided) -->
+    <label 
+        x-show="typeof label !== 'undefined' && label"
+        class="block text-sm font-medium text-theme-secondary mb-1"
+        x-text="label"
+    ></label>
+
+    <!-- Date Input Button (triggers calendar) -->
+    <div class="relative">
+        <button
+            type="button"
+            @click="open = !open"
+            :disabled="typeof disabled !== 'undefined' && disabled"
+            class="w-full px-3 py-2.5 pr-10 text-left border border-theme-primary rounded-lg bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer transition-all duration-200 hover:border-primary-500 shadow-sm relative"
+            :aria-label="label || 'Select date'"
+        >
+            <span x-text="getCurrentValue() ? formatDisplayDate(getCurrentValue()) : (typeof placeholder !== 'undefined' ? placeholder : 'Select date')" class="truncate block pr-6"></span>
+            <!-- Calendar Icon -->
+            <div class="absolute inset-y-0 right-0 flex items-center justify-center pr-3 pointer-events-none">
+                <svg 
+                    class="h-5 w-5 text-theme-secondary" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+            </div>
+        </button>
+
+        <!-- Calendar Popup (PinesUI-style) -->
+        <div
+            x-show="open"
+            x-cloak
+            x-transition:enter="transition ease-out duration-100"
+            x-transition:enter-start="opacity-0 scale-95"
+            x-transition:enter-end="opacity-100 scale-100"
+            x-transition:leave="transition ease-in duration-75"
+            x-transition:leave-start="opacity-100 scale-100"
+            x-transition:leave-end="opacity-0 scale-95"
+            @click.away="open = false"
+            class="absolute z-50 mt-1 w-72 rounded-lg bg-theme-secondary border border-theme-primary shadow-lg p-4"
+        >
+            <!-- Calendar Header -->
+            <div class="flex items-center justify-between mb-4">
+                <button
+                    type="button"
+                    @click="navigateMonth(-1)"
+                    class="p-1 rounded-md hover:bg-theme-tertiary transition-colors text-theme-primary"
+                    aria-label="Previous month"
+                >
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                </button>
+                <div class="text-sm font-semibold text-theme-primary" x-text="getMonthName(calendarData.month) + ' ' + calendarData.year"></div>
+                <button
+                    type="button"
+                    @click="navigateMonth(1)"
+                    class="p-1 rounded-md hover:bg-theme-tertiary transition-colors text-theme-primary"
+                    aria-label="Next month"
+                >
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Day Headers -->
+            <div class="grid grid-cols-7 gap-1 mb-2">
+                <template x-for="day in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']">
+                    <div class="text-xs font-medium text-theme-secondary text-center py-1" x-text="day"></div>
+                </template>
+            </div>
+
+            <!-- Calendar Days -->
+            <div class="grid grid-cols-7 gap-1">
+                <template x-for="(dayData, index) in calendarData.days" :key="index">
+                    <div class="aspect-square">
+                        <button
+                            x-show="canSelectDay(dayData)"
+                            type="button"
+                            @click="canSelectDay(dayData) && selectDate(dayData.day, dayData.year, dayData.month)"
+                            :class="canSelectDay(dayData) ? (
+                                isSelected(dayData.day, dayData.year, dayData.month) 
+                                    ? 'bg-primary-500 text-white dark:bg-primary-200 dark:text-primary-900 font-semibold ring-2 ring-primary-600 dark:ring-primary-100' 
+                                    : isToday(dayData.day, dayData.year, dayData.month) && !isSelected(dayData.day, dayData.year, dayData.month)
+                                    ? 'bg-theme-tertiary text-theme-primary border-2 border-primary-500 dark:border-primary-200 font-semibold'
+                                    : 'text-theme-primary hover:bg-theme-tertiary'
+                            ) : ''"
+                            class="w-full h-full rounded-md text-sm transition-colors duration-150 flex items-center justify-center"
+                        >
+                            <span x-text="dayData.day"></span>
+                        </button>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Clear Button -->
+            <div class="mt-4 pt-4 border-t border-theme-primary">
+                <button
+                    type="button"
+                    @click="clearDate()"
+                    class="w-full px-3 py-2 text-sm text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary rounded-md transition-colors"
+                >
+                    Clear
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+

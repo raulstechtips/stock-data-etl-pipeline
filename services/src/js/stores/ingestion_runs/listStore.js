@@ -26,19 +26,29 @@ function defineRunsListStore() {
         previousCursor: null,
         pageSize: 50,
         
-        // Filters - all filter fields from API Documentation.md lines 639-654
+        // Debounce timers for real-time filtering
+        _debounceTimers: {
+            ticker__icontains: null,
+            requested_by__icontains: null
+        },
+        
+        // Debounce delay (ms) - configurable
+        debounceDelay: 400,
+        
+        // Current API request controller for cancellation
+        _currentRequestController: null,
+        
+        // Filters - removed exact filters (ticker, requested_by), kept for backward compatibility
         filters: {
             run_id: '',
-            ticker: '',
             ticker__icontains: '',
             state: '',
-            requested_by: '',
             requested_by__icontains: '',
             created_after: '',
             created_before: '',
             is_terminal: '',
             is_in_progress: '',
-            bulk_queue_run: ''
+            bulk_queue_run: '' // Kept in store but not displayed in UI
         },
 
         /**
@@ -80,6 +90,15 @@ function defineRunsListStore() {
          */
         async loadRuns(cursor = null) {
             try {
+                // Cancel any pending request
+                if (this._currentRequestController) {
+                    this._currentRequestController.abort();
+                }
+                
+                // Create new AbortController for this request
+                this._currentRequestController = new AbortController();
+                const signal = this._currentRequestController.signal;
+                
                 this.loading = true;
                 this.error = null;
 
@@ -98,15 +117,14 @@ function defineRunsListStore() {
                             }
                         }
                     } else if (key === 'created_after' || key === 'created_before') {
-                        // Handle date filters - convert date picker (YYYY-MM-DD) to ISO 8601
+                        // Handle date filters - convert date picker (YYYY-MM-DD) to UTC ISO 8601
                         if (value && value.trim() !== '') {
-                            // Date picker format is "YYYY-MM-DD"
-                            // Convert to ISO 8601 with 00:00:00 time (start of day)
+                            // Date picker format is "YYYY-MM-DD" (user's local timezone)
+                            // Convert local midnight to UTC ISO 8601 format
                             const dateValue = value.trim();
-                            // Validate it's in YYYY-MM-DD format
-                            if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-                                // Use 00:00:00 (start of day) for both filters
-                                activeFilters[key] = `${dateValue}T00:00:00Z`;
+                            const utcISO = window.dateUtils.dateToUTCISO(dateValue);
+                            if (utcISO) {
+                                activeFilters[key] = utcISO;
                             }
                         }
                     } else {
@@ -123,8 +141,14 @@ function defineRunsListStore() {
                     throw new Error('Runs API store is not available');
                 }
 
-                // Call API
+                // Call API (note: API client doesn't support AbortSignal yet, but we track it for future use)
                 const response = await runsAPI.listRuns(this.pageSize, cursor, activeFilters);
+
+                // Check if request was aborted (shouldn't happen with current API client, but check for safety)
+                if (signal.aborted) {
+                    this.loading = false;
+                    return;
+                }
 
                 // Update state
                 this.runs = response.results || [];
@@ -132,13 +156,21 @@ function defineRunsListStore() {
                 this.previousCursor = response.previous ? this.extractCursor(response.previous) : null;
 
             } catch (error) {
+                // Ignore abort errors
+                if (error.name === 'AbortError' || (this._currentRequestController && this._currentRequestController.signal.aborted)) {
+                    this.loading = false;
+                    return;
+                }
                 this.error = error.message || 'Failed to load runs';
                 console.error('Failed to load runs:', error);
                 this.runs = [];
                 this.nextCursor = null;
                 this.previousCursor = null;
             } finally {
-                this.loading = false;
+                // Clear loading state if this is still the current request and not aborted
+                if (this._currentRequestController && !this._currentRequestController.signal.aborted) {
+                    this.loading = false;
+                }
             }
         },
 
@@ -171,18 +203,24 @@ function defineRunsListStore() {
          * Clear all filters and reload runs
          */
         async clearFilters() {
+            // Clear debounce timers
+            Object.keys(this._debounceTimers).forEach(key => {
+                if (this._debounceTimers[key]) {
+                    clearTimeout(this._debounceTimers[key]);
+                    this._debounceTimers[key] = null;
+                }
+            });
+            
             this.filters = {
-                ticker: '',
+                run_id: '',
                 ticker__icontains: '',
                 state: '',
-                requested_by: '',
                 requested_by__icontains: '',
                 created_after: '',
                 created_before: '',
                 is_terminal: '',
                 is_in_progress: '',
-                bulk_queue_run: '',
-                run_id: ''
+                bulk_queue_run: ''
             };
             await this.applyFilters();
         },
@@ -219,6 +257,45 @@ function defineRunsListStore() {
          */
         getActiveFilterCount() {
             return Object.values(this.filters).filter(value => value && value.trim() !== '').length;
+        },
+
+        /**
+         * Handle debounced filter changes for real-time filtering
+         * @param {string} filterKey - Filter key (e.g., 'ticker__icontains', 'requested_by__icontains')
+         * @param {string} value - New filter value
+         */
+        handleDebouncedFilter(filterKey, value) {
+            // Clear existing timer for this filter
+            if (this._debounceTimers[filterKey]) {
+                clearTimeout(this._debounceTimers[filterKey]);
+                this._debounceTimers[filterKey] = null;
+            }
+
+            // Update filter value immediately (for UI reactivity)
+            this.filters[filterKey] = value;
+
+            // Trim value for checking
+            const trimmedValue = value.trim();
+
+            // If empty, clear immediately without API call
+            if (trimmedValue === '') {
+                // Reset pagination and reload
+                this.nextCursor = null;
+                this.previousCursor = null;
+                this.loadRuns(null).catch(err => console.error('Failed to reload runs:', err));
+                return;
+            }
+
+            // Set debounce timer
+            this._debounceTimers[filterKey] = setTimeout(() => {
+                // Reset pagination to first page when debounced filter triggers
+                this.nextCursor = null;
+                this.previousCursor = null;
+                // Load runs with updated filter
+                this.loadRuns(null).catch(err => console.error('Failed to reload runs:', err));
+                // Clear timer
+                this._debounceTimers[filterKey] = null;
+            }, this.debounceDelay);
         }
     });
 }

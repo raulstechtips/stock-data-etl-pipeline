@@ -26,14 +26,29 @@ function defineStocksListStore() {
         previousCursor: null,
         pageSize: 50,
         
-        // Filters
+        // Debounce timers for real-time filtering
+        _debounceTimers: {
+            ticker__icontains: null,
+            sector__name__icontains: null
+        },
+        
+        // Debounce delay (ms) - configurable
+        debounceDelay: 400,
+        
+        // Current API request controller for cancellation
+        _currentRequestController: null,
+        
+        // Exchanges list for dropdown
+        exchanges: [],
+        exchangesLoading: false,
+        exchangesLoaded: false,
+        
+        // Filters - removed exact filters (ticker, sector__name), kept for backward compatibility
         filters: {
-            ticker: '',
             ticker__icontains: '',
-            sector__name: '',
             sector__name__icontains: '',
             exchange__name: '',
-            country: ''
+            country: '' // Kept in store but not displayed in UI
         },
 
         /**
@@ -50,6 +65,15 @@ function defineStocksListStore() {
          */
         async loadStocks(cursor = null) {
             try {
+                // Cancel any pending request
+                if (this._currentRequestController) {
+                    this._currentRequestController.abort();
+                }
+                
+                // Create new AbortController for this request
+                this._currentRequestController = new AbortController();
+                const signal = this._currentRequestController.signal;
+                
                 this.loading = true;
                 this.error = null;
 
@@ -68,8 +92,14 @@ function defineStocksListStore() {
                     throw new Error('Stocks API store is not available');
                 }
 
-                // Call API
+                // Call API (note: API client doesn't support AbortSignal yet, but we track it for future use)
                 const response = await stocksAPI.listTickers(this.pageSize, cursor, activeFilters);
+
+                // Check if request was aborted (shouldn't happen with current API client, but check for safety)
+                if (signal.aborted) {
+                    this.loading = false;
+                    return;
+                }
 
                 // Update state
                 this.stocks = response.results || [];
@@ -77,13 +107,21 @@ function defineStocksListStore() {
                 this.previousCursor = response.previous ? this.extractCursor(response.previous) : null;
 
             } catch (error) {
+                // Ignore abort errors
+                if (error.name === 'AbortError' || (this._currentRequestController && this._currentRequestController.signal.aborted)) {
+                    this.loading = false;
+                    return;
+                }
                 this.error = error.message || 'Failed to load stocks';
                 console.error('Failed to load stocks:', error);
                 this.stocks = [];
                 this.nextCursor = null;
                 this.previousCursor = null;
             } finally {
-                this.loading = false;
+                // Clear loading state if this is still the current request and not aborted
+                if (this._currentRequestController && !this._currentRequestController.signal.aborted) {
+                    this.loading = false;
+                }
             }
         },
 
@@ -116,10 +154,16 @@ function defineStocksListStore() {
          * Clear all filters and reload stocks
          */
         async clearFilters() {
+            // Clear debounce timers
+            Object.keys(this._debounceTimers).forEach(key => {
+                if (this._debounceTimers[key]) {
+                    clearTimeout(this._debounceTimers[key]);
+                    this._debounceTimers[key] = null;
+                }
+            });
+            
             this.filters = {
-                ticker: '',
                 ticker__icontains: '',
-                sector__name: '',
                 sector__name__icontains: '',
                 exchange__name: '',
                 country: ''
@@ -159,6 +203,81 @@ function defineStocksListStore() {
          */
         getActiveFilterCount() {
             return Object.values(this.filters).filter(value => value && value.trim() !== '').length;
+        },
+
+        /**
+         * Handle debounced filter changes for real-time filtering
+         * @param {string} filterKey - Filter key (e.g., 'ticker__icontains', 'sector__name__icontains')
+         * @param {string} value - New filter value
+         */
+        handleDebouncedFilter(filterKey, value) {
+            // Clear existing timer for this filter
+            if (this._debounceTimers[filterKey]) {
+                clearTimeout(this._debounceTimers[filterKey]);
+                this._debounceTimers[filterKey] = null;
+            }
+
+            // Update filter value immediately (for UI reactivity)
+            this.filters[filterKey] = value;
+
+            // Trim value for checking
+            const trimmedValue = value.trim();
+
+            // If empty, clear immediately without API call
+            if (trimmedValue === '') {
+                // Reset pagination and reload
+                this.nextCursor = null;
+                this.previousCursor = null;
+                this.loadStocks(null).catch(err => console.error('Failed to reload stocks:', err));
+                return;
+            }
+
+            // Set debounce timer
+            this._debounceTimers[filterKey] = setTimeout(() => {
+                // Reset pagination to first page when debounced filter triggers
+                this.nextCursor = null;
+                this.previousCursor = null;
+                // Load stocks with updated filter
+                this.loadStocks(null).catch(err => console.error('Failed to reload stocks:', err));
+                // Clear timer
+                this._debounceTimers[filterKey] = null;
+            }, this.debounceDelay);
+        },
+
+        /**
+         * Load exchanges list from API (lazy loading - only on first call)
+         * Caches results in store after first load
+         */
+        async loadExchanges() {
+            // Return cached exchanges if already loaded
+            if (this.exchangesLoaded) {
+                return;
+            }
+
+            try {
+                this.exchangesLoading = true;
+                this.error = null;
+
+                // Get metadata API store
+                const metadataAPI = Alpine.store('metadataAPI');
+                if (!metadataAPI) {
+                    throw new Error('Metadata API store is not available');
+                }
+
+                // Fetch all exchanges (use large page size to get all at once)
+                const response = await metadataAPI.listExchanges(100, null, {});
+
+                // Store exchanges in state
+                this.exchanges = response.results || [];
+                this.exchangesLoaded = true;
+
+            } catch (error) {
+                this.error = error.message || 'Failed to load exchanges';
+                console.error('Failed to load exchanges:', error);
+                this.exchanges = [];
+            } finally {
+                this.exchangesLoading = false;
+            }
         }
     });
 }

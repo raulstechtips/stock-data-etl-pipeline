@@ -441,6 +441,38 @@ const dateUtils = {
             console.error('Error formatting timestamp:', error);
             return 'N/A';
         }
+    },
+    
+    /**
+     * Convert a date-only string (YYYY-MM-DD) to UTC ISO 8601 format
+     * Treats the input date as local midnight and converts to UTC
+     * @param {string} dateString - Date string in YYYY-MM-DD format
+     * @returns {string|null} - UTC ISO 8601 timestamp (e.g., "2025-01-15T08:00:00.000Z"), or null if invalid
+     * @example
+     * // User in PST (UTC-8) selects "2025-01-15"
+     * // This represents "2025-01-15 00:00:00 PST"
+     * // Converts to "2025-01-15T08:00:00.000Z" (UTC)
+     */
+    dateToUTCISO(dateString) {
+        if (!dateString || typeof dateString !== 'string') {
+            return null;
+        }
+        
+        // Validate YYYY-MM-DD format
+        if (!this._isDateOnly(dateString)) {
+            console.warn(`dateToUTCISO expects YYYY-MM-DD format, got: "${dateString}"`);
+            return null;
+        }
+        
+        // Parse as local midnight (using parseDate which appends T00:00:00 without Z)
+        const localDate = this.parseDate(dateString);
+        if (!localDate) {
+            return null;
+        }
+        
+        // Convert to UTC ISO 8601 format
+        // toISOString() automatically converts to UTC
+        return localDate.toISOString();
     }
 };
 

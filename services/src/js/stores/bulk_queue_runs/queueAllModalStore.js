@@ -72,8 +72,11 @@ function defineQueueAllModalStore() {
                 this.error = null;
 
                 // Use runsAPI to fetch exchanges
-                const runsAPI = Alpine.store('runsAPI');
-                const data = await runsAPI.listExchanges(100);
+                const metadataAPI = Alpine.store('metadataAPI');
+                if (!metadataAPI) {
+                    throw new Error('Metadata API store is not available');
+                }
+                const data = await metadataAPI.listExchanges();
                 
                 // Extract exchanges from results
                 this.exchanges = data.results || [];

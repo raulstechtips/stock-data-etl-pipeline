@@ -30,43 +30,6 @@ function defineRunsAPI() {
         },
 
         /**
-         * Build query parameters for API requests
-         * @private
-         * @param {number} pageSize - Number of items per page
-         * @param {string} cursor - Pagination cursor
-         * @param {object} filters - Filter parameters
-         * @param {string[]} stringFilterKeys - Array of string filter keys to process
-         * @param {string[]} booleanFilterKeys - Array of boolean filter keys to process
-         * @returns {URLSearchParams} - Built query parameters
-         */
-        _buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys) {
-            const params = new URLSearchParams();
-            if (pageSize) params.append('page_size', pageSize);
-            if (cursor) params.append('cursor', cursor);
-
-            // Add filter parameters (skip null/undefined/empty string values)
-            if (filters && typeof filters === 'object') {
-                // Handle string filters
-                stringFilterKeys.forEach(key => {
-                    const value = filters[key];
-                    if (value !== null && value !== undefined && value !== '') {
-                        params.append(key, value);
-                    }
-                });
-
-                // Handle boolean filters (convert to string)
-                booleanFilterKeys.forEach(key => {
-                    const value = filters[key];
-                    if (value !== null && value !== undefined) {
-                        params.append(key, String(value));
-                    }
-                });
-            }
-
-            return params;
-        },
-
-        /**
          * List all ingestion runs across all stocks with pagination and optional filters
          * @param {number} pageSize - Number of items per page (max: 100)
          * @param {string} cursor - Pagination cursor from previous response
@@ -118,7 +81,7 @@ function defineRunsAPI() {
                     'bulk_queue_run'
                 ];
                 const booleanFilterKeys = ['is_terminal', 'is_in_progress'];
-                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
+                const params = window.api.buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
 
                 const queryString = params.toString();
                 const endpoint = queryString ? `/runs?${queryString}` : '/runs';
@@ -199,7 +162,7 @@ function defineRunsAPI() {
                     'bulk_queue_run'
                 ];
                 const booleanFilterKeys = ['is_terminal', 'is_in_progress'];
-                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
+                const params = window.api.buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
 
                 const queryString = params.toString();
                 const endpoint = queryString 
@@ -299,7 +262,6 @@ function defineRunsAPI() {
          * @param {number} pageSize - Number of items per page (max: 100)
          * @param {string} cursor - Pagination cursor from previous response
          * @param {object} filters - Optional filter parameters
-         * @param {string} filters.requested_by - Exact requester match (case-insensitive)
          * @param {string} filters.requested_by__icontains - Requester contains substring (case-insensitive)
          * @param {string} filters.created_after - Filter runs created after this date (ISO 8601 format, e.g., "2025-01-01T00:00:00Z")
          * @param {string} filters.created_before - Filter runs created before this date (ISO 8601 format, e.g., "2025-12-31T23:59:59Z")
@@ -316,7 +278,6 @@ function defineRunsAPI() {
          * 
          * // List bulk queue runs with filters
          * await $store.runsAPI.listBulkQueueRuns(50, null, {
-         *   requested_by: 'admin@example.com',
          *   is_completed: true,
          *   has_errors: false
          * });
@@ -334,7 +295,6 @@ function defineRunsAPI() {
 
                 // Build query parameters
                 const stringFilterKeys = [
-                    'requested_by',
                     'requested_by__icontains',
                     'created_after',
                     'created_before',
@@ -344,7 +304,7 @@ function defineRunsAPI() {
                     'completed_at_before'
                 ];
                 const booleanFilterKeys = ['is_completed', 'has_errors'];
-                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
+                const params = window.api.buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
 
                 const queryString = params.toString();
                 const endpoint = queryString ? `/bulk-queue-runs?${queryString}` : '/bulk-queue-runs';
@@ -363,56 +323,6 @@ function defineRunsAPI() {
             } catch (error) {
                 this.error = error.message;
                 console.error('Failed to list bulk queue runs:', error);
-                throw error;
-            } finally {
-                this.loading = false;
-            }
-        },
-
-        /**
-         * List all exchanges with pagination and optional filters
-         * @param {number} pageSize - Number of items per page (max: 100)
-         * @param {string} cursor - Pagination cursor from previous response
-         * @param {object} filters - Optional filter parameters
-         * @param {string} filters.name - Exact exchange name match (case-insensitive)
-         * @param {string} filters.name__icontains - Exchange name contains substring (case-insensitive)
-         * @returns {Promise<object>} - Paginated response with next, previous, and results
-         * @example
-         * // List all exchanges
-         * await $store.runsAPI.listExchanges(100);
-         * 
-         * // List exchanges with filters
-         * await $store.runsAPI.listExchanges(100, null, {
-         *   name: 'NASDAQ'
-         * });
-         */
-        async listExchanges(pageSize = 50, cursor = null, filters = {}) {
-            try {
-                this.loading = true;
-                this.error = null;
-
-                // Build query parameters
-                const stringFilterKeys = ['name', 'name__icontains'];
-                const booleanFilterKeys = [];
-                const params = this._buildQueryParams(pageSize, cursor, filters, stringFilterKeys, booleanFilterKeys);
-
-                const queryString = params.toString();
-                const endpoint = queryString ? `/exchanges?${queryString}` : '/exchanges';
-
-                const response = await window.api.request(endpoint, {
-                    method: 'GET'
-                });
-
-                // Handle response
-                if (!response.ok) {
-                    const errorMessage = response.data.error?.message || response.data.detail || `Request failed with status ${response.status}`;
-                    throw new Error(errorMessage);
-                }
-
-                return response.data;
-            } catch (error) {
-                this.error = error.message;
-                console.error('Failed to list exchanges:', error);
                 throw error;
             } finally {
                 this.loading = false;
