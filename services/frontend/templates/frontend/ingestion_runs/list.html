@@ -75,164 +75,184 @@
             @submit.prevent="$store.runsList.applyFilters()"
             class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-            <!-- Ticker Filter -->
+            <!-- Ticker Filter (Debounced) -->
             <div>
                 <label for="filter-ticker" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Ticker (Exact)
+                    Ticker
                 </label>
+                <div class="relative">
                 <input
                     type="text"
                     id="filter-ticker"
-                    x-model="$store.runsList.filters.ticker"
-                    placeholder="e.g., AAPL"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by exact ticker symbol"
-                />
-            </div>
-
-            <!-- Ticker Contains Filter -->
-            <div>
-                <label for="filter-ticker-contains" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Ticker (Contains)
-                </label>
-                <input
-                    type="text"
-                    id="filter-ticker-contains"
                     x-model="$store.runsList.filters.ticker__icontains"
+                        @input="$store.runsList.handleDebouncedFilter('ticker__icontains', $event.target.value)"
                     placeholder="e.g., app"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        class="w-full px-3 py-2 pr-8 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     aria-label="Filter by ticker contains"
                 />
+                    <!-- Loading indicator for debounced filter -->
+                    <div 
+                        x-show="$store.runsList.loading && $store.runsList.filters.ticker__icontains.trim() !== ''"
+                        class="absolute right-2 top-1/2 transform -translate-y-1/2"
+                    >
+                        <svg class="animate-spin h-4 w-4 text-info" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                </div>
             </div>
 
             <!-- State Filter -->
-            <div>
-                <label for="filter-state" class="block text-sm font-medium text-theme-secondary mb-1">
-                    State
-                </label>
-                <select
-                    id="filter-state"
-                    x-model="$store.runsList.filters.state"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by ingestion state"
-                >
-                    <option value="">All States</option>
-                    <option value="QUEUED_FOR_FETCH">Queued for Fetch</option>
-                    <option value="FETCHING">Fetching</option>
-                    <option value="FETCHED">Fetched</option>
-                    <option value="QUEUED_FOR_DELTA">Queued for Delta</option>
-                    <option value="DELTA_RUNNING">Delta Running</option>
-                    <option value="DELTA_FINISHED">Delta Finished</option>
-                    <option value="DONE">Done</option>
-                    <option value="FAILED">Failed</option>
-                </select>
+            <div 
+                x-data="{
+                    get options() {
+                        return [
+                            { name: 'All States', value: '' },
+                            { name: 'Queued for Fetch', value: 'QUEUED_FOR_FETCH' },
+                            { name: 'Fetching', value: 'FETCHING' },
+                            { name: 'Fetched', value: 'FETCHED' },
+                            { name: 'Queued for Delta', value: 'QUEUED_FOR_DELTA' },
+                            { name: 'Delta Running', value: 'DELTA_RUNNING' },
+                            { name: 'Delta Finished', value: 'DELTA_FINISHED' },
+                            { name: 'Done', value: 'DONE' },
+                            { name: 'Failed', value: 'FAILED' }
+                        ];
+                    },
+                    get selected() {
+                        return $store.runsList.filters.state || '';
+                    },
+                    get loading() {
+                        return $store.runsList.loading;
+                    },
+                    placeholder: 'All States',
+                    label: 'State',
+                    onChange(value) {
+                        $store.runsList.filters.state = value || '';
+                        // Auto-apply filters when state is selected
+                        $store.runsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/dropdown_select.html' %}
             </div>
 
-            <!-- Requested By Filter -->
+            <!-- Requested By Filter (Debounced) -->
             <div>
                 <label for="filter-requested-by" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Requested By (Exact)
+                    Requested By
                 </label>
+                <div class="relative">
                 <input
                     type="text"
                     id="filter-requested-by"
-                    x-model="$store.runsList.filters.requested_by"
-                    placeholder="e.g., user@example.com"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by exact requester"
-                />
-            </div>
-
-            <!-- Requested By Contains Filter -->
-            <div>
-                <label for="filter-requested-by-contains" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Requested By (Contains)
-                </label>
-                <input
-                    type="text"
-                    id="filter-requested-by-contains"
                     x-model="$store.runsList.filters.requested_by__icontains"
+                        @input="$store.runsList.handleDebouncedFilter('requested_by__icontains', $event.target.value)"
                     placeholder="e.g., user"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        class="w-full px-3 py-2 pr-8 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     aria-label="Filter by requester contains"
                 />
+                    <!-- Loading indicator for debounced filter -->
+                    <div 
+                        x-show="$store.runsList.loading && $store.runsList.filters.requested_by__icontains.trim() !== ''"
+                        class="absolute right-2 top-1/2 transform -translate-y-1/2"
+                    >
+                        <svg class="animate-spin h-4 w-4 text-info" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                </div>
             </div>
 
             <!-- Created After Filter -->
-            <div>
-                <label for="filter-created-after" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Created After
-                </label>
-                <input
-                    type="date"
-                    id="filter-created-after"
-                    x-model="$store.runsList.filters.created_after"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs created after date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.runsList.filters.created_after || '';
+                    },
+                    label: 'Created After',
+                    onChange(dateValue) {
+                        $store.runsList.filters.created_after = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.runsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
 
             <!-- Created Before Filter -->
-            <div>
-                <label for="filter-created-before" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Created Before
-                </label>
-                <input
-                    type="date"
-                    id="filter-created-before"
-                    x-model="$store.runsList.filters.created_before"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter runs created before date"
-                />
+            <div 
+                x-data="{
+                    get value() {
+                        return $store.runsList.filters.created_before || '';
+                    },
+                    label: 'Created Before',
+                    onChange(dateValue) {
+                        $store.runsList.filters.created_before = dateValue || '';
+                        // Auto-apply filters when date is selected
+                        $store.runsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/date_picker.html' %}
             </div>
 
             <!-- Is Terminal Filter -->
-            <div>
-                <label for="filter-is-terminal" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Terminal Status
-                </label>
-                <select
-                    id="filter-is-terminal"
-                    x-model="$store.runsList.filters.is_terminal"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by terminal status"
-                >
-                    <option value="">All</option>
-                    <option value="true">Terminal (DONE/FAILED)</option>
-                    <option value="false">Non-Terminal</option>
-                </select>
+            <div 
+                x-data="{
+                    get options() {
+                        return [
+                            { name: 'All', value: '' },
+                            { name: 'Terminal (DONE/FAILED)', value: 'true' },
+                            { name: 'Non-Terminal', value: 'false' }
+                        ];
+                    },
+                    get selected() {
+                        return $store.runsList.filters.is_terminal || '';
+                    },
+                    get loading() {
+                        return $store.runsList.loading;
+                    },
+                    placeholder: 'All',
+                    label: 'Terminal Status',
+                    onChange(value) {
+                        $store.runsList.filters.is_terminal = value || '';
+                        // Auto-apply filters when terminal status is selected
+                        $store.runsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/dropdown_select.html' %}
             </div>
 
             <!-- Is In Progress Filter -->
-            <div>
-                <label for="filter-is-in-progress" class="block text-sm font-medium text-theme-secondary mb-1">
-                    In Progress Status
-                </label>
-                <select
-                    id="filter-is-in-progress"
-                    x-model="$store.runsList.filters.is_in_progress"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by in-progress status"
-                >
-                    <option value="">All</option>
-                    <option value="true">In Progress</option>
-                    <option value="false">Not In Progress</option>
-                </select>
-            </div>
-
-            <!-- Bulk Queue Run Filter -->
-            <div>
-                <label for="filter-bulk-queue-run" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Bulk Queue Run ID
-                </label>
-                <input
-                    type="text"
-                    id="filter-bulk-queue-run"
-                    x-model="$store.runsList.filters.bulk_queue_run"
-                    placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono text-sm"
-                    aria-label="Filter by bulk queue run UUID"
-                />
+            <div 
+                x-data="{
+                    get options() {
+                        return [
+                            { name: 'All', value: '' },
+                            { name: 'In Progress', value: 'true' },
+                            { name: 'Not In Progress', value: 'false' }
+                        ];
+                    },
+                    get selected() {
+                        return $store.runsList.filters.is_in_progress || '';
+                    },
+                    get loading() {
+                        return $store.runsList.loading;
+                    },
+                    placeholder: 'All',
+                    label: 'In Progress Status',
+                    onChange(value) {
+                        $store.runsList.filters.is_in_progress = value || '';
+                        // Auto-apply filters when in-progress status is selected
+                        $store.runsList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/dropdown_select.html' %}
             </div>
 
             <!-- Apply Filters Button -->

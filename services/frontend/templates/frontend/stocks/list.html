@@ -49,94 +49,92 @@
             @submit.prevent="$store.stocksList.applyFilters()"
             class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-            <!-- Ticker Filter -->
+            <!-- Ticker Filter (Debounced) -->
             <div>
                 <label for="filter-ticker" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Ticker (Exact)
+                    Ticker
                 </label>
+                <div class="relative">
                 <input
                     type="text"
                     id="filter-ticker"
-                    x-model="$store.stocksList.filters.ticker"
-                    placeholder="e.g., AAPL"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by exact ticker symbol"
-                />
-            </div>
-
-            <!-- Ticker Contains Filter -->
-            <div>
-                <label for="filter-ticker-contains" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Ticker (Contains)
-                </label>
-                <input
-                    type="text"
-                    id="filter-ticker-contains"
                     x-model="$store.stocksList.filters.ticker__icontains"
+                        @input="$store.stocksList.handleDebouncedFilter('ticker__icontains', $event.target.value)"
                     placeholder="e.g., app"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        class="w-full px-3 py-2 pr-8 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     aria-label="Filter by ticker contains"
                 />
+                    <!-- Loading indicator for debounced filter -->
+                    <div 
+                        x-show="$store.stocksList.loading && $store.stocksList.filters.ticker__icontains.trim() !== ''"
+                        class="absolute right-2 top-1/2 transform -translate-y-1/2"
+                    >
+                        <svg class="animate-spin h-4 w-4 text-info" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                </div>
             </div>
 
-            <!-- Sector Filter -->
+            <!-- Sector Name Filter (Debounced) -->
             <div>
                 <label for="filter-sector-name" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Sector Name (Exact)
+                    Sector Name
                 </label>
+                <div class="relative">
                 <input
                     type="text"
                     id="filter-sector-name"
-                    x-model="$store.stocksList.filters.sector__name"
-                    placeholder="e.g., Information Technology"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by exact sector name"
-                />
-            </div>
-
-            <!-- Sector Contains Filter -->
-            <div>
-                <label for="filter-sector-name-contains" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Sector Name (Contains)
-                </label>
-                <input
-                    type="text"
-                    id="filter-sector-name-contains"
                     x-model="$store.stocksList.filters.sector__name__icontains"
+                        @input="$store.stocksList.handleDebouncedFilter('sector__name__icontains', $event.target.value)"
                     placeholder="e.g., tech"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        class="w-full px-3 py-2 pr-8 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     aria-label="Filter by sector name contains"
                 />
+                    <!-- Loading indicator for debounced filter -->
+                    <div 
+                        x-show="$store.stocksList.loading && $store.stocksList.filters.sector__name__icontains.trim() !== ''"
+                        class="absolute right-2 top-1/2 transform -translate-y-1/2"
+                    >
+                        <svg class="animate-spin h-4 w-4 text-info" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                </div>
             </div>
 
-            <!-- Exchange Name Filter -->
-            <div>
-                <label for="filter-exchange" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Exchange Name
-                </label>
-                <input
-                    type="text"
-                    id="filter-exchange"
-                    x-model="$store.stocksList.filters.exchange__name"
-                    placeholder="e.g., NASDAQ"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by exchange name"
-                />
-            </div>
-
-            <!-- Country Filter -->
-            <div>
-                <label for="filter-country" class="block text-sm font-medium text-theme-secondary mb-1">
-                    Country Code
-                </label>
-                <input
-                    type="text"
-                    id="filter-country"
-                    x-model="$store.stocksList.filters.country"
-                    placeholder="e.g., US"
-                    class="w-full px-3 py-2 border border-theme-primary rounded-md bg-theme-secondary text-theme-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    aria-label="Filter by country code"
-                />
+            <!-- Exchange Name Filter (Custom Dropdown) -->
+            <div 
+                x-data="{
+                    get options() {
+                        // Add 'All Exchanges' option at the beginning
+                        const allOption = { id: '', name: 'All Exchanges', value: '' };
+                        return [allOption, ...($store.stocksList.exchanges || [])];
+                    },
+                    get selected() {
+                        return $store.stocksList.filters.exchange__name || '';
+                    },
+                    get loading() {
+                        return $store.stocksList.exchangesLoading;
+                    },
+                    placeholder: 'All Exchanges',
+                    loadingText: 'Loading exchanges...',
+                    label: 'Exchange Name',
+                    onLoad() {
+                        if (!$store.stocksList.exchangesLoaded && !$store.stocksList.exchangesLoading) {
+                            $store.stocksList.loadExchanges();
+                        }
+                    },
+                    onChange(value) {
+                        $store.stocksList.filters.exchange__name = value || '';
+                        // Auto-apply filters when exchange is selected
+                        $store.stocksList.applyFilters();
+                    }
+                }"
+            >
+                {% include 'components/shared/dropdown_select.html' %}
             </div>
 
             <!-- Apply Filters Button -->
