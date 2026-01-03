@@ -120,7 +120,7 @@ function defineStocksListStore() {
             } finally {
                 // Clear loading state if this is still the current request and not aborted
                 if (this._currentRequestController && !this._currentRequestController.signal.aborted) {
-                this.loading = false;
+                    this.loading = false;
                 }
             }
         },
