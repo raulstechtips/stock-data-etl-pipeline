@@ -134,7 +134,11 @@ class TickerListView(ListAPIView):
     pagination_class = StandardCursorPagination
     filter_backends = [DjangoFilterBackend]
     filterset_class = StockFilter
-    queryset = Stock.objects.all().order_by('-created_at')
+    queryset = (
+        Stock.objects
+        .select_related('exchange', 'sector')
+        .order_by('-created_at')
+    )
 
 
 class RunListView(ListAPIView):
