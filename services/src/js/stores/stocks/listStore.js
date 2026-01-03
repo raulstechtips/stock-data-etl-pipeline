@@ -250,7 +250,7 @@ function defineStocksListStore() {
          */
         async loadExchanges() {
             // Return cached exchanges if already loaded
-            if (this.exchangesLoaded && this.exchanges.length > 0) {
+            if (this.exchangesLoaded) {
                 return;
             }
 
