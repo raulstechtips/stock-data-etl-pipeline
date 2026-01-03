@@ -76,6 +76,38 @@ class Exchange(models.Model):
         return f"<Exchange(id={self.id}, name='{self.name}')>"
 
 
+class Sector(models.Model):
+    """
+    Represents an industry sector classification for stocks.
+    
+    This model stores sector information with case-preserving names. Unlike
+    Exchange names which are normalized to uppercase, sector names are
+    preserved exactly as they come from external APIs to maintain consistency
+    with external data sources.
+    
+    Attributes:
+        id: UUID primary key
+        name: Unique sector name (e.g., 'Information Technology', 'Financials')
+            Preserves case as-is from external APIs (no normalization).
+        created_at: Timestamp when the sector was first added
+        updated_at: Timestamp when the sector was last modified
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'sectors'
+        ordering = ['name']
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return f"<Sector(id={self.id}, name='{self.name}')>"
+
+
 class Stock(models.Model):
     """
     Represents a stock ticker symbol.
@@ -93,7 +125,7 @@ class Stock(models.Model):
             Automatically normalized to uppercase on save.
         created_at: Timestamp when the stock was first added
         updated_at: Timestamp when the stock was last modified
-        sector: Industry sector classification (e.g., 'Information Technology')
+        sector: ForeignKey to Sector model representing industry sector classification
         name: Company name
         exchange: ForeignKey to Exchange model representing where the stock is traded
         country: Country code where company is based (e.g., 'US')
@@ -109,7 +141,14 @@ class Stock(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     # Metadata fields from Delta Lake
-    sector = models.CharField(max_length=255, null=True, blank=True)
+    sector = models.ForeignKey(
+        'Sector',
+        on_delete=models.SET_NULL,
+        related_name='stocks',
+        null=True,
+        blank=True,
+        db_index=True
+    )
     name = models.CharField(max_length=255, null=True, blank=True)
     exchange = models.ForeignKey(
         Exchange,

@@ -10,7 +10,7 @@ This file contains unit tests for:
 from django.test import TestCase
 from django.db import IntegrityError
 
-from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Sector, Stock, StockIngestionRun
 
 
 class ExchangeModelTest(TestCase):
@@ -125,6 +125,110 @@ class ExchangeModelTest(TestCase):
         self.assertEqual(exchanges[2].name, 'NYSE')
 
 
+class SectorModelTest(TestCase):
+    """Tests for the Sector model."""
+
+    def test_create_sector(self):
+        """Test creating a sector with valid data."""
+        sector = Sector.objects.create(name='Information Technology')
+        
+        self.assertIsNotNone(sector.id)
+        self.assertEqual(sector.name, 'Information Technology')
+        self.assertIsNotNone(sector.created_at)
+        self.assertIsNotNone(sector.updated_at)
+
+    def test_sector_name_uniqueness(self):
+        """Test that sector names must be unique."""
+        Sector.objects.create(name='Information Technology')
+        
+        with self.assertRaises(IntegrityError):
+            Sector.objects.create(name='Information Technology')
+
+    def test_sector_name_preserves_case(self):
+        """Test that sector names preserve case as-is (no normalization, unlike Exchange)."""
+        # Create sector with mixed case name
+        sector = Sector.objects.create(name='Information Technology')
+        
+        # Verify it's stored exactly as provided (case preserved)
+        self.assertEqual(sector.name, 'Information Technology')
+        
+        # Verify case-sensitive uniqueness - different case should be allowed
+        # (unlike Exchange which normalizes to uppercase)
+        sector2 = Sector.objects.create(name='information technology')
+        
+        # Both should exist with different cases
+        self.assertEqual(sector.name, 'Information Technology')
+        self.assertEqual(sector2.name, 'information technology')
+        self.assertNotEqual(sector.id, sector2.id)
+
+    def test_sector_name_case_sensitive_uniqueness(self):
+        """Test that sector names are case-sensitive (unlike Exchange which is case-insensitive)."""
+        # Create sector with specific case
+        Sector.objects.create(name='Information Technology')
+        
+        # Try to create with different case - should succeed (unlike Exchange)
+        # This is intentional - sector names preserve case from external APIs
+        sector2 = Sector.objects.create(name='INFORMATION TECHNOLOGY')
+        
+        # Both should exist
+        self.assertEqual(Sector.objects.filter(name='Information Technology').count(), 1)
+        self.assertEqual(Sector.objects.filter(name='INFORMATION TECHNOLOGY').count(), 1)
+
+    def test_sector_str_representation(self):
+        """Test the string representation of a sector."""
+        sector = Sector.objects.create(name='Financials')
+        self.assertEqual(str(sector), 'Financials')
+
+    def test_sector_repr(self):
+        """Test the repr of a sector."""
+        sector = Sector.objects.create(name='Information Technology')
+        self.assertIn('Information Technology', repr(sector))
+        self.assertIn('Sector', repr(sector))
+
+    def test_sector_get_or_create_creates_new(self):
+        """Test that get_or_create creates a new sector when it doesn't exist."""
+        sector, created = Sector.objects.get_or_create(name='Information Technology')
+        
+        self.assertTrue(created)
+        self.assertEqual(sector.name, 'Information Technology')
+
+    def test_sector_get_or_create_retrieves_existing(self):
+        """Test that get_or_create retrieves existing sector."""
+        # Create sector first
+        existing_sector = Sector.objects.create(name='Information Technology')
+        
+        # Try to get_or_create with same name
+        sector, created = Sector.objects.get_or_create(name='Information Technology')
+        
+        self.assertFalse(created)
+        self.assertEqual(sector.id, existing_sector.id)
+        self.assertEqual(sector.name, 'Information Technology')
+
+    def test_sector_get_or_create_case_sensitive(self):
+        """Test that get_or_create is case-sensitive (unlike Exchange)."""
+        # Create sector with specific case
+        existing_sector = Sector.objects.create(name='Information Technology')
+        
+        # Try get_or_create with different case - should create new (case-sensitive)
+        sector, created = Sector.objects.get_or_create(name='information technology')
+        
+        self.assertTrue(created)  # Creates new because case differs
+        self.assertNotEqual(sector.id, existing_sector.id)
+        self.assertEqual(sector.name, 'information technology')
+
+    def test_sector_ordering(self):
+        """Test that sectors are ordered by name."""
+        Sector.objects.create(name='Financials')
+        Sector.objects.create(name='Information Technology')
+        Sector.objects.create(name='Healthcare')
+        
+        sectors = list(Sector.objects.all())
+        
+        self.assertEqual(sectors[0].name, 'Financials')
+        self.assertEqual(sectors[1].name, 'Healthcare')
+        self.assertEqual(sectors[2].name, 'Information Technology')
+
+
 class StockModelTest(TestCase):
     """Tests for the Stock model."""
 
@@ -190,6 +294,140 @@ class StockModelTest(TestCase):
         """Test the repr of a stock."""
         stock = Stock.objects.create(ticker='MSFT')
         self.assertIn('MSFT', repr(stock))
+
+
+class StockSectorForeignKeyTest(TestCase):
+    """Tests for the Stock.sector ForeignKey relationship."""
+
+    def test_stock_sector_can_be_null(self):
+        """Test that stock.sector can be null."""
+        stock = Stock.objects.create(ticker='AAPL')
+        
+        self.assertIsNone(stock.sector)
+
+    def test_stock_sector_can_be_set(self):
+        """Test that stock.sector ForeignKey can be set to a Sector."""
+        sector = Sector.objects.create(name='Information Technology')
+        stock = Stock.objects.create(ticker='AAPL', sector=sector)
+        
+        self.assertEqual(stock.sector, sector)
+        self.assertEqual(stock.sector.name, 'Information Technology')
+
+    def test_stock_sector_can_be_retrieved(self):
+        """Test that stock.sector ForeignKey can be retrieved."""
+        sector = Sector.objects.create(name='Financials')
+        stock = Stock.objects.create(ticker='JPM', sector=sector)
+        
+        # Retrieve stock from database
+        retrieved_stock = Stock.objects.get(ticker='JPM')
+        
+        self.assertEqual(retrieved_stock.sector, sector)
+        self.assertEqual(retrieved_stock.sector.name, 'Financials')
+
+    def test_sector_deletion_sets_stock_sector_to_none(self):
+        """Test that deleting a Sector sets Stock.sector to None (SET_NULL behavior)."""
+        sector = Sector.objects.create(name='Information Technology')
+        stock = Stock.objects.create(ticker='AAPL', sector=sector)
+        
+        # Verify sector is set
+        self.assertEqual(stock.sector, sector)
+        
+        # Delete the sector
+        sector.delete()
+        
+        # Reload stock from database
+        stock.refresh_from_db()
+        
+        # Verify sector is now None
+        self.assertIsNone(stock.sector)
+
+    def test_filter_stocks_by_sector(self):
+        """Test filtering stocks by sector using ForeignKey."""
+        tech_sector = Sector.objects.create(name='Information Technology')
+        finance_sector = Sector.objects.create(name='Financials')
+        
+        # Create stocks with different sectors
+        aapl = Stock.objects.create(ticker='AAPL', sector=tech_sector)
+        msft = Stock.objects.create(ticker='MSFT', sector=tech_sector)
+        jpm = Stock.objects.create(ticker='JPM', sector=finance_sector)
+        tsla = Stock.objects.create(ticker='TSLA')  # No sector
+        
+        # Filter stocks by Information Technology sector
+        tech_stocks = Stock.objects.filter(sector=tech_sector)
+        
+        self.assertEqual(tech_stocks.count(), 2)
+        self.assertIn(aapl, tech_stocks)
+        self.assertIn(msft, tech_stocks)
+        self.assertNotIn(jpm, tech_stocks)
+        self.assertNotIn(tsla, tech_stocks)
+
+    def test_filter_stocks_by_sector_name(self):
+        """Test filtering stocks by sector name using ForeignKey relationship."""
+        tech_sector = Sector.objects.create(name='Information Technology')
+        finance_sector = Sector.objects.create(name='Financials')
+        
+        Stock.objects.create(ticker='AAPL', sector=tech_sector)
+        Stock.objects.create(ticker='MSFT', sector=tech_sector)
+        Stock.objects.create(ticker='JPM', sector=finance_sector)
+        
+        # Filter stocks by sector name
+        tech_stocks = Stock.objects.filter(sector__name='Information Technology')
+        
+        self.assertEqual(tech_stocks.count(), 2)
+        tech_tickers = [stock.ticker for stock in tech_stocks]
+        self.assertIn('AAPL', tech_tickers)
+        self.assertIn('MSFT', tech_tickers)
+        self.assertNotIn('JPM', tech_tickers)
+
+    def test_sector_reverse_relationship(self):
+        """Test accessing stocks from a sector using reverse relationship."""
+        tech_sector = Sector.objects.create(name='Information Technology')
+        
+        aapl = Stock.objects.create(ticker='AAPL', sector=tech_sector)
+        msft = Stock.objects.create(ticker='MSFT', sector=tech_sector)
+        
+        # Access stocks through reverse relationship
+        tech_stocks = tech_sector.stocks.all()
+        
+        self.assertEqual(tech_stocks.count(), 2)
+        self.assertIn(aapl, tech_stocks)
+        self.assertIn(msft, tech_stocks)
+
+    def test_stock_sector_update(self):
+        """Test updating stock.sector ForeignKey."""
+        tech_sector = Sector.objects.create(name='Information Technology')
+        finance_sector = Sector.objects.create(name='Financials')
+        
+        stock = Stock.objects.create(ticker='AAPL', sector=tech_sector)
+        
+        # Verify initial sector
+        self.assertEqual(stock.sector, tech_sector)
+        
+        # Update sector
+        stock.sector = finance_sector
+        stock.save()
+        
+        # Reload and verify
+        stock.refresh_from_db()
+        self.assertEqual(stock.sector, finance_sector)
+        self.assertEqual(stock.sector.name, 'Financials')
+
+    def test_sector_names_preserve_case(self):
+        """Test that sector names preserve case (unlike Exchange which normalizes to uppercase)."""
+        # Create sectors with different cases - both should be allowed
+        tech1 = Sector.objects.create(name='Information Technology')
+        tech2 = Sector.objects.create(name='information technology')
+        tech3 = Sector.objects.create(name='INFORMATION TECHNOLOGY')
+        
+        # All should exist with their respective cases
+        self.assertEqual(tech1.name, 'Information Technology')
+        self.assertEqual(tech2.name, 'information technology')
+        self.assertEqual(tech3.name, 'INFORMATION TECHNOLOGY')
+        
+        # All should be different records
+        self.assertNotEqual(tech1.id, tech2.id)
+        self.assertNotEqual(tech2.id, tech3.id)
+        self.assertNotEqual(tech1.id, tech3.id)
 
 
 class StockExchangeForeignKeyTest(TestCase):

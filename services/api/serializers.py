@@ -7,7 +7,7 @@ serializing output for the stock ingestion API endpoints.
 
 from rest_framework import serializers
 
-from api.models import BulkQueueRun, Exchange, IngestionState, Stock, StockIngestionRun
+from api.models import BulkQueueRun, Exchange, IngestionState, Sector, Stock, StockIngestionRun
 
 
 class ExchangeSerializer(serializers.ModelSerializer):
@@ -29,16 +29,37 @@ class ExchangeSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
+class SectorSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Sector model.
+    
+    Used for listing and retrieving sector information. All fields
+    except 'name' are read-only as they are managed by the system.
+    """
+
+    class Meta:
+        model = Sector
+        fields = [
+            'id',
+            'name',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
 class StockSerializer(serializers.ModelSerializer):
     """
     Serializer for the Stock model.
     
     Used for listing and retrieving stock information including metadata
     fields populated from Delta Lake. The exchange field is a ForeignKey
-    to the Exchange model, but for backward compatibility we provide both
-    the exchange ID and exchange_name as separate fields.
+    to the Exchange model, and the sector field is a ForeignKey to the Sector
+    model. For backward compatibility, we provide both the foreign key IDs
+    and human-readable names (exchange_name and sector_name) as separate fields.
     """
     exchange_name = serializers.SerializerMethodField()
+    sector_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Stock
@@ -48,6 +69,7 @@ class StockSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'sector',
+            'sector_name',
             'name',
             'exchange',
             'exchange_name',
@@ -58,7 +80,7 @@ class StockSerializer(serializers.ModelSerializer):
             'industry',
             'description',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'exchange', 'exchange_name']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'exchange', 'exchange_name', 'sector', 'sector_name']
 
     def get_exchange_name(self, obj: Stock) -> str | None:
         """
@@ -68,6 +90,15 @@ class StockSerializer(serializers.ModelSerializer):
         This maintains backward compatibility with the previous CharField implementation.
         """
         return obj.exchange.name if obj.exchange else None
+
+    def get_sector_name(self, obj: Stock) -> str | None:
+        """
+        Get the sector name from the related Sector model.
+        
+        Returns None if no sector is associated with the stock.
+        This maintains backward compatibility with the previous CharField implementation.
+        """
+        return obj.sector.name if obj.sector else None
 
 
 class StockIngestionRunSerializer(serializers.ModelSerializer):
