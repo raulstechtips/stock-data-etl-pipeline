@@ -104,22 +104,34 @@
                     class="space-y-4"
                 >
                     <!-- Exchange Dropdown -->
-                    <div>
-                        <label for="exchange-select" class="block text-sm font-medium text-theme-text-secondary mb-1">
-                            Exchange
-                        </label>
-                        <select
-                            id="exchange-select"
-                            x-model="$store.queueAllModal.selectedExchange"
-                            :disabled="$store.queueAllModal.submitting"
-                            class="w-full px-3 py-2 border border-theme-border-primary rounded-md bg-theme-primary text-theme-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                            aria-label="Select exchange to filter stocks by"
-                        >
-                            <option value="">All Exchanges</option>
-                            <template x-for="exchange in $store.queueAllModal.exchanges" :key="exchange.id">
-                                <option :value="exchange.name" x-text="exchange.name"></option>
-                            </template>
-                        </select>
+                    <div 
+                        x-data="{
+                            get options() {
+                                // Build options array with 'All Exchanges' first
+                                const allOption = { name: 'All Exchanges', value: '' };
+                                const exchangeOptions = ($store.queueAllModal.exchanges || []).map(exchange => ({
+                                    name: exchange.name,
+                                    value: exchange.name
+                                }));
+                                return [allOption, ...exchangeOptions];
+                            },
+                            get selected() {
+                                return $store.queueAllModal.selectedExchange || '';
+                            },
+                            get loading() {
+                                return $store.queueAllModal.loadingExchanges;
+                            },
+                            get disabled() {
+                                return $store.queueAllModal.submitting;
+                            },
+                            placeholder: 'All Exchanges',
+                            label: 'Exchange',
+                            onChange(value) {
+                                $store.queueAllModal.selectedExchange = value || '';
+                            }
+                        }"
+                    >
+                        {% include 'components/shared/dropdown_select.html' %}
                         <p class="mt-1 text-xs text-theme-text-tertiary">
                             Select an exchange to filter stocks, or leave as "All Exchanges" to queue all stocks
                         </p>
