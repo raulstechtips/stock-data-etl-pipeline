@@ -12,6 +12,7 @@ from uuid import UUID
 from django.db import IntegrityError
 from celery.exceptions import CeleryError, OperationalError as CeleryOperationalError
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -42,6 +43,8 @@ class QueueForFetchView(APIView):
     - Creates a new run in QUEUED_FOR_FETCH state
     """
     
+    permission_classes = [AllowAny]
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.service = StockIngestionService()
