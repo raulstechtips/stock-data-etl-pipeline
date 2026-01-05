@@ -5,7 +5,6 @@ This module contains DRF serializers for validating input and
 serializing output for the stock ingestion API endpoints.
 """
 
-import re
 
 from rest_framework import serializers
 
@@ -206,7 +205,7 @@ class QueueForFetchRequestSerializer(serializers.Serializer):
     stock for ingestion.
     """
     ticker = serializers.CharField(
-        max_length=10,
+        max_length=20,
         help_text="Stock ticker symbol (e.g., 'AAPL')"
     )
     requested_by = serializers.CharField(
