@@ -163,8 +163,12 @@ if APP_ENV in ["prod", "stage"]:
                 'sslmode': 'verify-ca',
                 'sslrootcert': '/etc/ssl/internal-ca/ca.crt',
             },
-            'CONN_MAX_AGE': 600,  # 10 minutes - keeps connections alive to reduce overhead
-            'CONN_HEALTH_CHECKS': True  # Verify connections before use
+            # CRITICAL: With transaction pooling, set to 0
+            # Connections are returned to pool after each transaction
+            # Django will get a fresh connection for each request/task
+            'CONN_MAX_AGE': 0,
+            # Health checks not needed with PgBouncer (it handles connection validation)
+            'CONN_HEALTH_CHECKS': False  
         }
     }
 else:
