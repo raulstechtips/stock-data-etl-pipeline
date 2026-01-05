@@ -158,7 +158,9 @@ if APP_ENV in ["prod", "stage"]:
             **DATABASE_DEFAULT,
             'OPTIONS': {
                 'connect_timeout': 10,
-                # 'application_name': '',
+                'application_name': 'stock_data_management_pipeline',
+                'sslmode': 'verify-ca',
+                'sslrootcert': '/etc/ssl/internal-ca/ca.crt',
             },
             'CONN_MAX_AGE': 600,  # 10 minutes - keeps connections alive to reduce overhead
             'CONN_HEALTH_CHECKS': True  # Verify connections before use
@@ -248,6 +250,13 @@ else:
 # Celery Broker (RabbitMQ)
 CELERY_BROKER_URL = BROKER_URL
 
+if APP_ENV in ["prod", "stage"]:
+    import ssl
+    CELERY_BROKER_USE_SSL = {
+        "ca_certs": "/etc/ssl/internal-ca/ca.crt",
+        "cert_reqs": ssl.CERT_REQUIRED,
+    }
+
 # Celery Results Backend (Redis)
 if APP_ENV in ["prod", "stage", "dev"]:
     # Use Redis as results backend
@@ -284,12 +293,6 @@ CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 # ============================================
 # Worker-Specific Configuration
 # ============================================
-
-# AWS Keys to access the mock endpoint for fetching stock data - provides realistic data for testing
-MOCK_STOCK_API_AWS_ACCESS_KEY_ID = os.environ.get('MOCK_STOCK_API_AWS_ACCESS_KEY_ID', '')
-MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY = os.environ.get('MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY', '')
-MOCK_STOCK_API_AWS_S3_ENDPOINT_URL = os.environ.get('MOCK_STOCK_API_AWS_S3_ENDPOINT_URL', '')
-MOCK_STOCK_DATA_BUCKET = os.environ.get('MOCK_STOCK_DATA_BUCKET', 'stock-api')
 
 # External API configuration for fetching stock data
 STOCK_DATA_API_TIMEOUT = int(os.environ.get('STOCK_DATA_API_TIMEOUT', '300')) # 5 minutes
@@ -386,10 +389,6 @@ AUTHENTICATION_BACKENDS = [
 
 # Site Framework (required for allauth)
 SITE_ID = 1
-
-# Site domain for allauth
-SITE_DOMAIN = os.environ.get('SITE_DOMAIN', 'localhost:8000')
-
 
 # ============================================
 # ALLAUTH CONFIGURATION (Updated to new format)
