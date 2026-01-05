@@ -5,6 +5,8 @@ This module contains DRF serializers for validating input and
 serializing output for the stock ingestion API endpoints.
 """
 
+import re
+
 from rest_framework import serializers
 
 from api.models import BulkQueueRun, Exchange, IngestionState, Sector, Stock, StockIngestionRun
@@ -228,15 +230,9 @@ class QueueForFetchRequestSerializer(serializers.Serializer):
         # Normalize to uppercase
         normalized = value.upper().strip()
         
-        # Basic validation for ticker format
-        if not normalized.isalnum():
+        if len(normalized) > 20:  # Match model max_length
             raise serializers.ValidationError(
-                "Ticker symbol must contain only alphanumeric characters"
-            )
-        
-        if len(normalized) > 10:
-            raise serializers.ValidationError(
-                "Ticker symbol must be 10 characters or fewer"
+                "Ticker symbol must be 20 characters or fewer"
             )
         
         return normalized
