@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     "api",
     "frontend",
     "workers",
+    "utils",
 ]
 
 MIDDLEWARE = [
