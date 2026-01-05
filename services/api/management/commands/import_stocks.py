@@ -19,7 +19,7 @@ from api.models import Stock
 class Command(BaseCommand):
     """Import stocks from JSON file into database."""
 
-    help = "Import stock tickers from JSON file into database and queue them for ingestion"
+    help = "Import stock tickers from JSON file into database"
 
     def add_arguments(self, parser):
         parser.add_argument(
