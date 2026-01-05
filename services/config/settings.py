@@ -294,6 +294,12 @@ CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 # Worker-Specific Configuration
 # ============================================
 
+# AWS Keys to access the mock endpoint for fetching stock data - provides realistic data for testing
+MOCK_STOCK_API_AWS_ACCESS_KEY_ID = os.environ.get('MOCK_STOCK_API_AWS_ACCESS_KEY_ID', '')
+MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY = os.environ.get('MOCK_STOCK_API_AWS_SECRET_ACCESS_KEY', '')
+MOCK_STOCK_API_AWS_S3_ENDPOINT_URL = os.environ.get('MOCK_STOCK_API_AWS_S3_ENDPOINT_URL', '')
+MOCK_STOCK_DATA_BUCKET = os.environ.get('MOCK_STOCK_DATA_BUCKET', 'stock-api')
+
 # External API configuration for fetching stock data
 STOCK_DATA_API_TIMEOUT = int(os.environ.get('STOCK_DATA_API_TIMEOUT', '300')) # 5 minutes
 STOCK_DATA_API_URL = os.environ.get('STOCK_DATA_API_URL', '')
