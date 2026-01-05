@@ -331,7 +331,7 @@ def _fetch_from_api(ticker: str) -> bytes:
         url = f"{settings.STOCK_DATA_API_URL}/{ticker}"
         
         if settings.STOCK_DATA_API_KEY:
-            url += f"?apiKey={settings.STOCK_DATA_API_KEY}"
+            url += f"?api_key={settings.STOCK_DATA_API_KEY}"
         
         # Make request with timeout
         response = requests.get(
