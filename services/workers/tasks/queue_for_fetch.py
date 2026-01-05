@@ -122,7 +122,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             if run.state in [IngestionState.FETCHED, IngestionState.QUEUED_FOR_DELTA,
                             IngestionState.DELTA_RUNNING, IngestionState.DELTA_FINISHED,
                             IngestionState.DONE]:
-                logger.info(
+                logger.debug(
                     "Run already past QUEUED_FOR_FETCH, skipping fetch (likely duplicate task execution)",
                     extra={"run_id": run_id, "state": run.state}
                 )
@@ -162,7 +162,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     run_id=run_uuid,
                     new_state=IngestionState.FETCHING
                 )
-                logger.info("Transitioned run to FETCHING state", extra={"run_id": run_id})
+                logger.debug("Transitioned run to FETCHING state", extra={"run_id": run_id})
         
         except IngestionRunNotFoundError as e:
             logger.exception("Ingestion run not found", extra={"run_id": str(run_id)})
@@ -236,7 +236,7 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                 new_state=IngestionState.FETCHED,
                 raw_data_uri=data_uri
             )
-            logger.info("Successfully completed fetch", extra={"run_id": run_id, "ticker": ticker})
+            logger.debug("Successfully completed fetch", extra={"run_id": run_id, "ticker": ticker})
             
             # Step 5: Transition to QUEUED_FOR_DELTA and queue the Delta Lake task
             try:
@@ -247,14 +247,14 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     run_id=run_uuid,
                     new_state=IngestionState.QUEUED_FOR_DELTA
                 )
-                logger.info(
+                logger.debug(
                     "Transitioned to QUEUED_FOR_DELTA",
                     extra={"run_id": run_id, "ticker": ticker}
                 )
                 
                 process_delta_lake.delay(str(run_uuid), ticker)
                 
-                logger.info(
+                logger.debug(
                     "Queued Delta Lake processing task",
                     extra={"run_id": run_id, "ticker": ticker}
                 )
@@ -496,7 +496,7 @@ def _transition_to_failed(
             error_code=error_code,
             error_message=error_message
         )
-        logger.info("Transitioned run to FAILED", extra={"run_id": str(run_id), "error_code": error_code})
+        logger.debug("Transitioned run to FAILED", extra={"run_id": str(run_id), "error_code": error_code})
     except InvalidStateTransitionError:
         # Run might already be in FAILED state from another process
         logger.warning("Could not transition run to FAILED (already in terminal state?)", extra={"run_id": str(run_id)})

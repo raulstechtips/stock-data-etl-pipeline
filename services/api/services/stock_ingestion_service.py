@@ -120,7 +120,7 @@ class StockIngestionService:
         latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
         
         if latest_run:
-            logger.info(
+            logger.debug(
                 f"Retrieved status for {ticker_upper}: state={latest_run.state}, "
                 f"run_id={latest_run.id}"
             )
@@ -133,7 +133,7 @@ class StockIngestionService:
                 updated_at=latest_run.updated_at,
             )
         
-        logger.info(f"No ingestion runs found for {ticker_upper}")
+        logger.debug(f"No ingestion runs found for {ticker_upper}")
         return StatusResult(
             ticker=stock.ticker,
             stock_id=stock.id,
@@ -305,7 +305,7 @@ class StockIngestionService:
         latest_run = StockIngestionRun.objects.get_latest_for_stock(stock.id)
         
         if latest_run and latest_run.is_in_progress:
-            logger.info(
+            logger.debug(
                 f"Active run exists for {ticker_upper}: state={latest_run.state}, "
                 f"run_id={latest_run.id}"
             )
@@ -358,7 +358,7 @@ class StockIngestionService:
                 state=state
             )
             
-            logger.info(
+            logger.debug(
                 "Queued Discord notification",
                 extra={"run_id": str(run_id), "ticker": ticker, "state": state}
             )

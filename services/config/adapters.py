@@ -2,7 +2,7 @@ import logging
 import jwt
 
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from allauth.exceptions import ImmediateHttpResponse
+from allauth.core.exceptions import ImmediateHttpResponse
 from django.http import HttpResponseForbidden
 from django.contrib import messages
 from django.conf import settings
@@ -34,13 +34,14 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         # Extract groups from the ID token
         user_groups = self._extract_groups_from_token(sociallogin)
         
-        logger.debug(f"User attempting login with groups: {user_groups}")
-        logger.debug(f"Allowed groups: {allowed_groups}")
+        logger.debug("User attempting login", extra={"user_groups": user_groups})
+        logger.debug("Allowed groups configured", extra={"allowed_groups": allowed_groups})
         
         # Check if user has at least one allowed group
         if not any(group in allowed_groups for group in user_groups):
             logger.warning(
-                f"Login rejected: User groups {user_groups} do not match allowed groups {allowed_groups}"
+                "Login rejected: User not in allowed groups",
+                extra={"user_groups": user_groups, "allowed_groups": allowed_groups}
             )
             messages.error(
                 request,
@@ -52,7 +53,7 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
                 )
             )
         
-        logger.debug(f"Login approved: User has valid group membership")
+        logger.debug("Login approved: User has valid group membership")
         return super().pre_social_login(request, sociallogin)
     
     def _extract_groups_from_token(self, sociallogin):

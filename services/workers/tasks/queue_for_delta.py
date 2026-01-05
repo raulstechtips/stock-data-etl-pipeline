@@ -135,7 +135,7 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
             
             # Idempotency check: If already DELTA_FINISHED or DONE, task is complete
             if run.state in [IngestionState.DELTA_FINISHED, IngestionState.DONE]:
-                logger.info(
+                logger.debug(
                     "Run already past QUEUED_FOR_DELTA, skipping Delta Lake processing",
                     extra={"run_id": run_id, "state": run.state}
                 )
@@ -187,7 +187,7 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
                     run_id=run_uuid,
                     new_state=IngestionState.DELTA_RUNNING
                 )
-                logger.info("Transitioned run to DELTA_RUNNING state", extra={"run_id": run_id})
+                logger.debug("Transitioned run to DELTA_RUNNING state", extra={"run_id": run_id})
         
         except IngestionRunNotFoundError as e:
             logger.exception("Ingestion run not found", extra={"run_id": str(run_id)})
@@ -289,7 +289,7 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
                 run_id=run_uuid,
                 new_state=IngestionState.DONE
             )
-            logger.info(
+            logger.debug(
                 "Transitioned to DONE state",
                 extra={"run_id": run_id, "ticker": ticker}
             )
@@ -299,7 +299,7 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
             
             update_stock_metadata.delay(ticker)
             
-            logger.info(
+            logger.debug(
                 "Queued metadata update task",
                 extra={"run_id": run_id, "ticker": ticker}
             )
@@ -821,7 +821,7 @@ def _transition_to_failed(
             error_code=error_code,
             error_message=error_message
         )
-        logger.info("Transitioned run to FAILED", extra={"run_id": str(run_id), "error_code": error_code})
+        logger.debug("Transitioned run to FAILED", extra={"run_id": str(run_id), "error_code": error_code})
     except InvalidStateTransitionError:
         logger.warning("Could not transition run to FAILED (already in terminal state?)", extra={"run_id": str(run_id)})
     except Exception:

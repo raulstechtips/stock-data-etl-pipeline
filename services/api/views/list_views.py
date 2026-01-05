@@ -246,7 +246,7 @@ class TickerRunsListView(ListAPIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        logger.info(
+        logger.debug(
             "Listing runs for ticker",
             extra={'ticker': ticker}
         )
