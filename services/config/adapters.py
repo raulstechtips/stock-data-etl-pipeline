@@ -2,7 +2,7 @@ import logging
 import jwt
 
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from allauth.exceptions import ImmediateHttpResponse
+from allauth.core.exceptions import ImmediateHttpResponse
 from django.http import HttpResponseForbidden
 from django.contrib import messages
 from django.conf import settings
