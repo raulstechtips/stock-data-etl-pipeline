@@ -44,7 +44,6 @@ if APP_ENV in ['prod', 'stage']:
     app.conf.broker_transport_options = {
         'confirm_publish': True,
     }
-    logger.info(f"Configured quorum queues for {APP_ENV} environment")
 else:
     # Use regular queues in development
     # No explicit queue configuration needed - Celery will use default classic queues
@@ -53,7 +52,6 @@ else:
         Queue('queue_for_delta'),
         Queue('send_discord_notifications'),
     )
-    logger.info(f"Configured classic queues for {APP_ENV} environment")
 
 # Configure task routing to separate queues
 # Each task type will be routed to its own dedicated queue
