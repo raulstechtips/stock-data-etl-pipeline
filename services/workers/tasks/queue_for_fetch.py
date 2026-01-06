@@ -238,10 +238,10 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             )
             logger.debug("Successfully completed fetch", extra={"run_id": run_id, "ticker": ticker})
             
-            # Step 5: Transition to QUEUED_FOR_DELTA and add to batch queue
+            # Step 5: Transition to QUEUED_FOR_DELTA
+            # Runs accumulate in database in QUEUED_FOR_DELTA state
+            # The periodic task will process them in batches
             try:
-                from workers.tasks.queue_for_delta import add_to_delta_batch
-                
                 # Update state to QUEUED_FOR_DELTA
                 service.update_run_state(
                     run_id=run_uuid,
@@ -251,24 +251,17 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     "Transitioned to QUEUED_FOR_DELTA",
                     extra={"run_id": run_id, "ticker": ticker}
                 )
-                
-                add_to_delta_batch.delay(str(run_uuid), ticker)
-                
-                logger.debug(
-                    "Added to Delta Lake batch queue",
-                    extra={"run_id": run_id, "ticker": ticker}
-                )
             except Exception as e:
                 logger.exception(
-                    "Failed to queue Delta Lake task",
+                    "Failed to transition to QUEUED_FOR_DELTA",
                     extra={"run_id": run_id, "ticker": ticker}
                 )
                 _transition_to_failed(
                     service, run_uuid,
-                    "DELTA_QUEUE_ERROR",
-                    f"Failed to queue Delta Lake task: {type(e).__name__}: {str(e)}"
+                    "STATE_TRANSITION_ERROR",
+                    f"Failed to transition to QUEUED_FOR_DELTA: {type(e).__name__}: {str(e)}"
                 )
-                raise NonRetryableError(f"Failed to queue Delta Lake task: {str(e)}") from e
+                raise NonRetryableError(f"Failed to transition to QUEUED_FOR_DELTA: {str(e)}") from e
             
             return FetchStockDataResult(
                 run_id=str(run_id),
