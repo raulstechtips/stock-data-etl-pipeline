@@ -10,7 +10,9 @@ This module configures Celery with:
 
 import os
 import logging
+from datetime import timedelta
 from celery import Celery
+from celery.schedules import schedule
 from kombu import Queue
 from django.conf import settings
 logger = logging.getLogger(__name__)
@@ -58,9 +60,7 @@ else:
 app.conf.task_routes = {
     'workers.tasks.fetch_stock_data': {'queue': 'queue_for_fetch'},
     'workers.tasks.process_delta_lake': {'queue': 'queue_for_delta'},
-    'workers.tasks.add_to_delta_batch': {'queue': 'queue_for_fetch'},
-    'workers.tasks.process_delta_lake_batch_periodic': {'queue': 'queue_for_fetch'},
-    'workers.tasks.process_delta_lake_batch': {'queue': 'queue_for_delta'},
+    'workers.tasks.process_delta_lake_batch_periodic': {'queue': 'queue_for_delta'},
     'workers.tasks.send_discord_notification': {'queue': 'send_discord_notifications'},
     'workers.tasks.update_stock_metadata': {'queue': 'queue_for_fetch'},  # Low priority, non-critical
     'workers.tasks.queue_all_stocks_for_fetch': {'queue': 'queue_for_fetch'},
@@ -74,7 +74,7 @@ app.autodiscover_tasks()
 app.conf.beat_schedule = {
     'process-delta-lake-batch-periodic': {
         'task': 'workers.tasks.process_delta_lake_batch_periodic',
-        'schedule': settings.DELTA_PERIOD_INTERVAL,  # Run every N seconds (integer)
+        'schedule': schedule(run_every=timedelta(seconds=settings.DELTA_PERIOD_INTERVAL)),
     },
 }
 
