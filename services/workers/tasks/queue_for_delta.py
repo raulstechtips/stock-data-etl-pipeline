@@ -22,7 +22,6 @@ Note: This task is not safe for concurrent execution due to delta-rs limitations
 with MinIO/S3 concurrent writes. Run with concurrency=1.
 """
 
-import io
 import json
 import logging
 import uuid
@@ -375,20 +374,24 @@ def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
     """
     from api.models import StockIngestionRun
     
+    logger.info("Starting periodic batch Delta Lake processing")
+    
     service = StockIngestionService()
     
-    logger.info("Starting periodic batch Delta Lake processing")
+    # Track runs that were successfully transitioned to DELTA_RUNNING
+    # This allows us to mark them as FAILED if something goes wrong later
+    # Must be defined outside try block to be accessible in exception handlers
+    runs_in_delta_running = []
     
     try:
         # Get batch size from settings
         batch_size = settings.DELTA_BATCH_SIZE
         
         # Query database for runs in QUEUED_FOR_DELTA state
-        # Use select_for_update(skip_locked=True) for atomic row locking
-        # This ensures each run is processed exactly once, even with concurrent workers
+        # No need for select_for_update here - service methods handle locking internally
+        # The idempotency check below handles already-processed runs
         runs = list(
             StockIngestionRun.objects
-            .select_for_update(skip_locked=True)
             .select_related('stock')
             .filter(state=IngestionState.QUEUED_FOR_DELTA)
             .order_by('queued_for_delta_at')
@@ -396,7 +399,7 @@ def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
         )
         
         if not runs:
-            logger.debug("No runs in QUEUED_FOR_DELTA state")
+            logger.info("No runs in QUEUED_FOR_DELTA state to process")
             return {
                 'batch_size': 0,
                 'successful_count': 0,
@@ -464,6 +467,8 @@ def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
                     run_id=run_uuid,
                     new_state=IngestionState.DELTA_RUNNING
                 )
+                # Track this run as successfully transitioned to DELTA_RUNNING
+                runs_in_delta_running.append(run_uuid)
             except Exception as e:
                 logger.warning(
                     "Failed to transition run to DELTA_RUNNING",
@@ -566,15 +571,40 @@ def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
             extra={"dataframe_count": len(dataframes)}
         )
         
-        combined_df = _combine_dataframes(dataframes)
-        
-        logger.info(
-            "Combined DataFrames",
-            extra={
-                "total_rows": len(combined_df),
-                "columns": len(combined_df.columns)
-            }
-        )
+        try:
+            combined_df = _combine_dataframes(dataframes)
+            
+            logger.info(
+                "Combined DataFrames",
+                extra={
+                    "total_rows": len(combined_df),
+                    "columns": len(combined_df.columns)
+                }
+            )
+        except Exception as e:
+            logger.exception("Failed to combine DataFrames")
+            # Mark all runs that were in DELTA_RUNNING as FAILED
+            for run_info in runs_to_process:
+                run_updates.append({
+                    'run_id': run_info['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to combine DataFrames: {str(e)}"
+                })
+            
+            # Also mark failed_runs
+            for failed_run in failed_runs:
+                run_updates.append({
+                    'run_id': failed_run['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to download/transform data: {failed_run['error']}"
+                })
+            
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            
+            raise NonRetryableError(f"Failed to combine DataFrames: {str(e)}") from e
         
         # Process unified Delta Lake stocks table
         try:
@@ -697,10 +727,53 @@ def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
         }
     
     except NonRetryableError:
+        # NonRetryableError is already handled in the inner try/except blocks
+        # But we need to ensure any runs in DELTA_RUNNING are marked as FAILED
+        if runs_in_delta_running:
+            logger.warning(
+                "Non-retryable error occurred, marking runs in DELTA_RUNNING as FAILED",
+                extra={"run_count": len(runs_in_delta_running)}
+            )
+            cleanup_updates = []
+            for run_uuid in runs_in_delta_running:
+                cleanup_updates.append({
+                    'run_id': run_uuid,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': 'Batch processing failed with non-retryable error'
+                })
+            
+            if cleanup_updates:
+                try:
+                    service.batch_update_run_states(cleanup_updates)
+                except Exception:
+                    logger.exception("Failed to update run states to FAILED during cleanup")
         raise
     
     except Exception as e:
         logger.exception("Unexpected error in periodic batch Delta Lake processing")
+        
+        # Mark all runs that were in DELTA_RUNNING as FAILED
+        if runs_in_delta_running:
+            logger.warning(
+                "Unexpected error occurred, marking runs in DELTA_RUNNING as FAILED",
+                extra={"run_count": len(runs_in_delta_running), "error": str(e)}
+            )
+            cleanup_updates = []
+            for run_uuid in runs_in_delta_running:
+                cleanup_updates.append({
+                    'run_id': run_uuid,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'UNEXPECTED_ERROR',
+                    'error_message': f"Unexpected error in batch processing: {str(e)}"
+                })
+            
+            if cleanup_updates:
+                try:
+                    service.batch_update_run_states(cleanup_updates)
+                except Exception:
+                    logger.exception("Failed to update run states to FAILED during cleanup")
+        
         raise NonRetryableError(f"Unexpected error in batch processing: {str(e)}") from e
 
 
@@ -1153,23 +1226,87 @@ def _process_stocks_table(
             ) from e
 
 
-def _combine_dataframes(dataframes: List[pl.DataFrame]) -> pl.DataFrame:
+def _align_dataframe_schema(df: pl.DataFrame, target_schema: Dict[str, pl.DataType]) -> pl.DataFrame:
     """
-    Combine multiple Polars DataFrames into a single DataFrame.
+    Align a DataFrame to a target schema by adding missing columns and casting existing columns.
     
-    All DataFrames must have identical schemas. Uses Polars' efficient
-    vertical concatenation which performs lazy evaluation and optimizes
-    memory usage.
+    This function ensures that a DataFrame has all columns specified in the target
+    schema with matching types. Missing columns are added with null values of the correct
+    type, and existing columns are cast to match the target schema types.
     
     Args:
-        dataframes: List of Polars DataFrames with identical schemas
+        df: DataFrame to align
+        target_schema: Target schema dictionary {column_name: dtype}
+        
+    Returns:
+        DataFrame with all target columns (missing columns filled with nulls, types aligned)
+    """
+    existing_columns = set(df.columns)
+    target_columns = set(target_schema.keys())
+    
+    # Build expressions: cast existing columns and add missing columns
+    expressions = []
+    
+    # Process columns in target schema order
+    for col in target_schema.keys():
+        target_dtype = target_schema[col]
+        
+        if col in existing_columns:
+            # Column exists - cast to target type if needed
+            existing_dtype = df.schema[col]
+            
+            if existing_dtype == target_dtype:
+                # Types match, no casting needed
+                expressions.append(pl.col(col))
+            else:
+                # Need to cast to target type
+                if target_dtype == pl.Float64:
+                    # Cast to Float64 (handles Int64, Int32, Float32, etc.)
+                    expressions.append(pl.col(col).cast(pl.Float64, strict=False).alias(col))
+                elif target_dtype == pl.Utf8 or target_dtype == pl.String:
+                    # Cast to Utf8
+                    expressions.append(pl.col(col).cast(pl.Utf8, strict=False).alias(col))
+                elif target_dtype == pl.Boolean:
+                    # Cast to Boolean
+                    expressions.append(pl.col(col).cast(pl.Boolean, strict=False).alias(col))
+                else:
+                    # Try to cast to target type
+                    expressions.append(pl.col(col).cast(target_dtype, strict=False).alias(col))
+        else:
+            # Column missing - add with null values of correct type
+            if target_dtype == pl.String or target_dtype == pl.Utf8:
+                expressions.append(pl.lit(None, dtype=pl.Utf8).alias(col))
+            elif target_dtype in (pl.Float64, pl.Float32):
+                expressions.append(pl.lit(None, dtype=pl.Float64).alias(col))
+            elif target_dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8):
+                expressions.append(pl.lit(None, dtype=pl.Float64).alias(col))  # Cast to Float64 for consistency
+            elif target_dtype == pl.Boolean:
+                expressions.append(pl.lit(None, dtype=pl.Boolean).alias(col))
+            else:
+                # Default to Utf8 for unknown types
+                expressions.append(pl.lit(None, dtype=pl.Utf8).alias(col))
+    
+    return df.select(expressions)
+
+
+def _combine_dataframes(dataframes: List[pl.DataFrame]) -> pl.DataFrame:
+    """
+    Combine multiple Polars DataFrames with potentially different schemas.
+    
+    This function handles schema differences by:
+    1. Collecting all unique columns from all DataFrames
+    2. Creating a unified schema (resolving type conflicts)
+    3. Aligning each DataFrame to the unified schema
+    4. Combining all aligned DataFrames
+    
+    Args:
+        dataframes: List of Polars DataFrames (may have different schemas)
         
     Returns:
         pl.DataFrame: Combined DataFrame with all rows from input DataFrames
         
     Raises:
         ValueError: If dataframes list is empty
-        InvalidDataFormatError: If schemas don't match
     """
     if not dataframes:
         raise ValueError("Cannot combine empty list of DataFrames")
@@ -1177,24 +1314,68 @@ def _combine_dataframes(dataframes: List[pl.DataFrame]) -> pl.DataFrame:
     if len(dataframes) == 1:
         return dataframes[0]
     
-    # Validate schemas match (all DataFrames should have same schema from _transform_data_to_polars)
-    first_schema = dataframes[0].schema
-    for idx, df in enumerate(dataframes[1:], start=1):
-        if df.schema != first_schema:
-            raise InvalidDataFormatError(
-                f"DataFrame at index {idx} has different schema than first DataFrame. "
-                f"Expected: {first_schema}, Got: {df.schema}"
-            )
+    # Step 1: Collect all unique columns and their types from all DataFrames
+    unified_schema = {}
+    for df in dataframes:
+        for col, dtype in df.schema.items():
+            if col not in unified_schema:
+                unified_schema[col] = dtype
+            else:
+                # Resolve type conflicts - prefer more general types
+                existing_dtype = unified_schema[col]
+                
+                # Prefer Float64 over Int64/Int32 (for numeric consistency)
+                if existing_dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, 
+                                     pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8):
+                    if dtype == pl.Float64:
+                        unified_schema[col] = pl.Float64
+                    elif dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8,
+                                  pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8):
+                        # Both are integers, keep existing (or prefer Int64)
+                        if existing_dtype != pl.Int64 and dtype == pl.Int64:
+                            unified_schema[col] = pl.Int64
+                
+                # Prefer Utf8/String over other types for text
+                elif existing_dtype != pl.Utf8 and dtype == pl.Utf8:
+                    unified_schema[col] = pl.Utf8
+                elif existing_dtype == pl.Utf8 and dtype != pl.Utf8:
+                    # Keep Utf8
+                    pass
+                
+                # Prefer Float64 over Float32
+                elif existing_dtype == pl.Float32 and dtype == pl.Float64:
+                    unified_schema[col] = pl.Float64
     
-    # Use Polars' efficient vertical concatenation
-    combined_df = pl.concat(dataframes, how='vertical')
+    # Step 2: Align each DataFrame to the unified schema
+    aligned_dataframes = []
+    for idx, df in enumerate(dataframes):
+        try:
+            aligned_df = _align_dataframe_schema(df, unified_schema)
+            aligned_dataframes.append(aligned_df)
+        except Exception as e:
+            logger.error(
+                "Failed to align DataFrame schema",
+                extra={
+                    "dataframe_index": idx,
+                    "error": str(e),
+                    "dataframe_columns": df.columns,
+                    "target_columns": list(unified_schema.keys())
+                }
+            )
+            raise InvalidDataFormatError(
+                f"Failed to align DataFrame at index {idx} to unified schema: {str(e)}"
+            ) from e
+    
+    # Step 3: Now all DataFrames have the same schema, can safely concat
+    combined_df = pl.concat(aligned_dataframes, how='vertical')
     
     logger.info(
-        "Combined DataFrames",
+        "Combined DataFrames with schema alignment",
         extra={
             "dataframe_count": len(dataframes),
             "total_rows": len(combined_df),
-            "columns": len(combined_df.columns)
+            "total_columns": len(combined_df.columns),
+            "unified_schema_size": len(unified_schema)
         }
     )
     
