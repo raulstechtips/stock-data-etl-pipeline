@@ -732,3 +732,325 @@ class TTMDataProcessingTest(TransactionTestCase):
         self.assertEqual(len(ttm_rows), 1)
         self.assertEqual(ttm_rows['period_end_date'][0], '2024-09')
 
+
+# Batch Processing Tests
+@patch('workers.tasks.update_stock_metadata.update_stock_metadata.delay')
+@patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
+class BatchProcessingTest(TransactionTestCase):
+    """Tests for batch Delta Lake processing tasks."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.service = StockIngestionService()
+        self.stock1 = Stock.objects.create(ticker='AAPL')
+        self.stock2 = Stock.objects.create(ticker='MSFT')
+        self.stock3 = Stock.objects.create(ticker='GOOGL')
+        
+        # Clear Redis cache before each test
+        from django.core.cache import cache
+        cache.clear()
+    
+    def test_combine_dataframes_single(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining a single DataFrame."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        df = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000],
+        })
+        
+        result = _combine_dataframes([df])
+        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result['ticker'][0], 'AAPL')
+    
+    def test_combine_dataframes_multiple(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining multiple DataFrames."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000],
+        })
+        
+        df2 = pl.DataFrame({
+            'ticker': ['MSFT'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [61858000000],
+        })
+        
+        result = _combine_dataframes([df1, df2])
+        
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result['ticker'].to_list(), ['AAPL', 'MSFT'])
+    
+    def test_combine_dataframes_empty_list(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining empty list raises ValueError."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        
+        with self.assertRaises(ValueError):
+            _combine_dataframes([])
+    
+    def test_combine_dataframes_schema_mismatch(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining DataFrames with different schemas raises error."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        from workers.exceptions import InvalidDataFormatError
+        import polars as pl
+        
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+        })
+        
+        df2 = pl.DataFrame({
+            'ticker': ['MSFT'],
+            'revenue': [61858000000],  # Different schema
+        })
+        
+        with self.assertRaises(InvalidDataFormatError):
+            _combine_dataframes([df1, df2])
+    
+    @patch('workers.tasks.queue_for_delta.cache')
+    def test_add_to_delta_batch_success(self, mock_cache, mock_discord_delay, mock_metadata_delay):
+        """Test adding item to batch queue."""
+        from workers.tasks.queue_for_delta import add_to_delta_batch
+        
+        # Mock Redis client
+        mock_redis_client = MagicMock()
+        mock_redis_client.llen.return_value = 1
+        mock_cache._cache.get_client.return_value = mock_redis_client
+        
+        run = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/AAPL.json'
+        )
+        
+        result = add_to_delta_batch(str(run.id), 'AAPL')
+        
+        # Verify Redis operations
+        mock_redis_client.rpush.assert_called_once()
+        mock_redis_client.llen.assert_called_once()
+        
+        # Verify result
+        self.assertEqual(result['run_id'], str(run.id))
+        self.assertEqual(result['ticker'], 'AAPL')
+        self.assertEqual(result['queue_size'], 1)
+    
+    @patch('workers.tasks.queue_for_delta.cache')
+    def test_add_to_delta_batch_invalid_run_id(self, mock_cache, mock_discord_delay, mock_metadata_delay):
+        """Test adding item with invalid run_id raises error."""
+        from workers.tasks.queue_for_delta import add_to_delta_batch
+        from workers.exceptions import NonRetryableError
+        
+        with self.assertRaises(NonRetryableError) as cm:
+            add_to_delta_batch('invalid-uuid', 'AAPL')
+        
+        self.assertIn('Invalid run_id format', str(cm.exception))
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch')
+    @patch('workers.tasks.queue_for_delta.cache')
+    def test_process_delta_lake_batch_periodic_with_items(self, mock_cache, mock_batch_task, mock_discord_delay, mock_metadata_delay):
+        """Test periodic task triggers batch processing when items exist."""
+        from workers.tasks.queue_for_delta import process_delta_lake_batch_periodic
+        
+        # Mock Redis client
+        mock_redis_client = MagicMock()
+        mock_redis_client.llen.return_value = 5  # 5 items in queue
+        mock_cache._cache.get_client.return_value = mock_redis_client
+        
+        result = process_delta_lake_batch_periodic()
+        
+        # Verify batch processing was triggered
+        mock_batch_task.delay.assert_called_once()
+        
+        # Verify result
+        self.assertEqual(result['queue_size'], 5)
+        self.assertTrue(result['triggered'])
+    
+    @patch('workers.tasks.queue_for_delta.cache')
+    def test_process_delta_lake_batch_periodic_no_items(self, mock_cache, mock_discord_delay, mock_metadata_delay):
+        """Test periodic task does not trigger batch processing when queue is empty."""
+        from workers.tasks.queue_for_delta import process_delta_lake_batch_periodic
+        
+        # Mock Redis client
+        mock_redis_client = MagicMock()
+        mock_redis_client.llen.return_value = 0  # No items in queue
+        mock_cache._cache.get_client.return_value = mock_redis_client
+        
+        result = process_delta_lake_batch_periodic()
+        
+        # Verify result
+        self.assertEqual(result['queue_size'], 0)
+        self.assertFalse(result['triggered'])
+    
+    @patch('workers.tasks.queue_for_delta._process_stocks_table')
+    @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
+    @patch('workers.tasks.queue_for_delta._download_from_storage')
+    @patch('workers.tasks.queue_for_delta.cache')
+    def test_process_delta_lake_batch_success(
+        self, mock_cache, mock_download, mock_transform, mock_process_stocks,
+        mock_discord_delay, mock_metadata_delay
+    ):
+        """Test successful batch processing."""
+        from workers.tasks.queue_for_delta import process_delta_lake_batch
+        import polars as pl
+        
+        # Create runs
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/AAPL.json'
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/MSFT.json'
+        )
+        
+        # Mock Redis client with batch items
+        mock_redis_client = MagicMock()
+        batch_items = [
+            json.dumps({'run_id': str(run1.id), 'ticker': 'AAPL'}).encode('utf-8'),
+            json.dumps({'run_id': str(run2.id), 'ticker': 'MSFT'}).encode('utf-8'),
+        ]
+        
+        # Create pipeline mock
+        mock_pipeline = MagicMock()
+        mock_pipeline.lrange.return_value = mock_pipeline
+        mock_pipeline.ltrim.return_value = mock_pipeline
+        mock_pipeline.execute.return_value = (batch_items, None)
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        
+        mock_cache._cache.get_client.return_value = mock_redis_client
+        
+        # Mock download and transform
+        mock_download.return_value = json.dumps(SAMPLE_STOCK_DATA).encode('utf-8')
+        
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000],
+        })
+        
+        df2 = pl.DataFrame({
+            'ticker': ['MSFT'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [61858000000],
+        })
+        
+        mock_transform.side_effect = [df1, df2]
+        mock_process_stocks.return_value = 's3://stock-delta-lake/stocks'
+        
+        # Execute batch processing
+        result = process_delta_lake_batch()
+        
+        # Verify result
+        self.assertEqual(result['batch_size'], 2)
+        self.assertEqual(result['successful_count'], 2)
+        self.assertEqual(result['failed_count'], 0)
+        
+        # Verify runs were updated
+        run1.refresh_from_db()
+        run2.refresh_from_db()
+        self.assertEqual(run1.state, IngestionState.DONE)
+        self.assertEqual(run2.state, IngestionState.DONE)
+    
+    @patch('workers.tasks.queue_for_delta.cache')
+    def test_process_delta_lake_batch_empty_queue(self, mock_cache, mock_discord_delay, mock_metadata_delay):
+        """Test batch processing with empty queue."""
+        from workers.tasks.queue_for_delta import process_delta_lake_batch
+        
+        # Mock Redis client with empty queue
+        mock_redis_client = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute.return_value = ([], None)
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        
+        mock_cache._cache.get_client.return_value = mock_redis_client
+        
+        result = process_delta_lake_batch()
+        
+        # Verify result
+        self.assertEqual(result['batch_size'], 0)
+        self.assertEqual(result['successful_count'], 0)
+        self.assertEqual(result['failed_count'], 0)
+    
+    @patch('workers.tasks.queue_for_delta._process_stocks_table')
+    @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
+    @patch('workers.tasks.queue_for_delta._download_from_storage')
+    @patch('workers.tasks.queue_for_delta.cache')
+    def test_process_delta_lake_batch_partial_failure(
+        self, mock_cache, mock_download, mock_transform, mock_process_stocks,
+        mock_discord_delay, mock_metadata_delay
+    ):
+        """Test batch processing with partial failures."""
+        from workers.tasks.queue_for_delta import process_delta_lake_batch
+        from workers.exceptions import StorageConnectionError
+        import polars as pl
+        
+        # Create runs
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/AAPL.json'
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/MSFT.json'
+        )
+        
+        # Mock Redis client
+        mock_redis_client = MagicMock()
+        batch_items = [
+            json.dumps({'run_id': str(run1.id), 'ticker': 'AAPL'}).encode('utf-8'),
+            json.dumps({'run_id': str(run2.id), 'ticker': 'MSFT'}).encode('utf-8'),
+        ]
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute.return_value = (batch_items, None)
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        
+        mock_cache._cache.get_client.return_value = mock_redis_client
+        
+        # Mock: first download succeeds, second fails
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000],
+        })
+        
+        mock_download.side_effect = [
+            json.dumps(SAMPLE_STOCK_DATA).encode('utf-8'),
+            StorageConnectionError("Connection failed")
+        ]
+        mock_transform.return_value = df1
+        mock_process_stocks.return_value = 's3://stock-delta-lake/stocks'
+        
+        # Execute batch processing
+        result = process_delta_lake_batch()
+        
+        # Verify result - one successful, one failed
+        self.assertEqual(result['batch_size'], 2)
+        self.assertEqual(result['successful_count'], 1)
+        self.assertEqual(result['failed_count'], 1)
+        
+        # Verify run1 succeeded
+        run1.refresh_from_db()
+        self.assertEqual(run1.state, IngestionState.DONE)
+        
+        # Verify run2 failed
+        run2.refresh_from_db()
+        self.assertEqual(run2.state, IngestionState.FAILED)
+        self.assertIsNotNone(run2.error_code)
+

@@ -309,6 +309,10 @@ STOCK_RAW_DATA_BUCKET = os.environ.get('STOCK_RAW_DATA_BUCKET', 'stock-raw-data'
 # S3/MinIO configuration for Delta Lake processed data storage
 STOCK_DELTA_LAKE_BUCKET = os.environ.get('STOCK_DELTA_LAKE_BUCKET', 'stock-delta-lake')
 
+# Delta Lake batch processing configuration
+DELTA_BATCH_SIZE = int(os.environ.get('DELTA_BATCH_SIZE', '100'))
+DELTA_PERIOD_INTERVAL = int(os.environ.get('DELTA_PERIOD_INTERVAL', '300'))  # 5 minutes in seconds
+
 # Discord notification configuration
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')
 DISCORD_THREAD_ID = os.environ.get('DISCORD_THREAD_ID', '')

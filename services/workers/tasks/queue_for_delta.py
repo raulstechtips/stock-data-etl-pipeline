@@ -34,6 +34,7 @@ from celery import shared_task
 from deltalake import DeltaTable, write_deltalake
 from deltalake.exceptions import TableNotFoundError
 from django.conf import settings
+from django.core.cache import cache
 from django.db import DatabaseError
 from minio import Minio
 from minio.error import MinioException, S3Error
@@ -348,6 +349,530 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
             logger.exception("Failed to transition to FAILED state", extra={"run_id": str(run_id)})
         
         raise NonRetryableError(f"Unexpected error: {str(e)}") from e
+
+
+@shared_task(bind=True, base=BaseTask, name='workers.tasks.add_to_delta_batch')
+def add_to_delta_batch(self, run_id: str, ticker: str) -> Dict[str, Any]:
+    """
+    Add a stock ingestion run to the Delta Lake batch processing queue.
+    
+    This task adds the run_id and ticker to a Redis list (FIFO queue) for
+    later batch processing. The task completes immediately after adding to Redis.
+    
+    Args:
+        run_id: UUID of the StockIngestionRun to add to batch
+        ticker: Stock ticker symbol
+        
+    Returns:
+        Dict with run_id, ticker, and queue_size
+    """
+    ticker = ticker.strip().upper()
+    logger.debug("Adding to Delta Lake batch queue", extra={"run_id": run_id, "ticker": ticker})
+    
+    try:
+        # Validate run_id format
+        try:
+            uuid.UUID(run_id)
+        except ValueError as e:
+            logger.error(
+                "Invalid run_id format - not a valid UUID",
+                extra={"run_id": run_id, "ticker": ticker}
+            )
+            raise NonRetryableError(f"Invalid run_id format: {run_id}") from e
+        
+        # Get cache backend
+        cache_backend = cache._cache
+        
+        # Check if we're using Redis backend
+        if not hasattr(cache_backend, 'get_client'):
+            logger.error(
+                "Cache backend does not support Redis list operations",
+                extra={"run_id": run_id, "ticker": ticker, "backend_type": type(cache_backend).__name__}
+            )
+            raise NonRetryableError(
+                f"Django cache backend ({type(cache_backend).__name__}) does not support Redis list operations"
+            )
+        
+        # Get Redis client
+        redis_client = cache_backend.get_client()
+        
+        # Redis key for batch queue
+        queue_key = 'delta_lake_batch_queue'
+        
+        # Serialize data as JSON
+        batch_item = json.dumps({'run_id': run_id, 'ticker': ticker})
+        
+        # Add to right (tail) of list for FIFO queue (RPUSH)
+        redis_client.rpush(queue_key, batch_item)
+        
+        # Get current queue size
+        queue_size = redis_client.llen(queue_key)
+        
+        logger.debug(
+            "Added to Delta Lake batch queue",
+            extra={"run_id": run_id, "ticker": ticker, "queue_size": queue_size}
+        )
+        
+        return {
+            'run_id': run_id,
+            'ticker': ticker,
+            'queue_size': queue_size
+        }
+    
+    except Exception as e:
+        logger.exception(
+            "Unexpected error adding to batch queue",
+            extra={"run_id": run_id, "ticker": ticker}
+        )
+        raise NonRetryableError(f"Failed to add to batch queue: {str(e)}") from e
+
+
+@shared_task(bind=True, base=BaseTask, name='workers.tasks.process_delta_lake_batch_periodic')
+def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
+    """
+    Periodic task that checks Redis for pending batch items and triggers batch processing.
+    
+    This task runs via Celery Beat at configurable intervals (DELTA_PERIOD_INTERVAL).
+    It checks if there are items in the Redis batch queue and, if so, queues a
+    batch processing task. This ensures leftover items (e.g., last 27 stocks from
+    9927 total) are eventually processed.
+    
+    Returns:
+        Dict with queue_size and whether batch processing was triggered
+    """
+    logger.debug("Running periodic batch check")
+    
+    try:
+        # Get cache backend
+        cache_backend = cache._cache
+        
+        # Check if we're using Redis backend
+        if not hasattr(cache_backend, 'get_client'):
+            logger.error(
+                "Cache backend does not support Redis list operations",
+                extra={"backend_type": type(cache_backend).__name__}
+            )
+            raise NonRetryableError(
+                f"Django cache backend ({type(cache_backend).__name__}) does not support Redis list operations"
+            )
+        
+        # Get Redis client
+        redis_client = cache_backend.get_client()
+        
+        # Redis key for batch queue
+        queue_key = 'delta_lake_batch_queue'
+        
+        # Check queue size
+        queue_size = redis_client.llen(queue_key)
+        
+        logger.debug(
+            "Periodic batch check",
+            extra={"queue_size": queue_size}
+        )
+        
+        if queue_size > 0:
+            # Queue batch processing task
+            from workers.tasks.queue_for_delta import process_delta_lake_batch
+            
+            process_delta_lake_batch.delay()
+            
+            logger.info(
+                "Triggered batch processing task",
+                extra={"queue_size": queue_size}
+            )
+            
+            return {
+                'queue_size': queue_size,
+                'triggered': True
+            }
+        else:
+            logger.debug("No items in batch queue, skipping batch processing")
+            return {
+                'queue_size': 0,
+                'triggered': False
+            }
+    
+    except Exception as e:
+        logger.exception("Unexpected error in periodic batch check")
+        raise NonRetryableError(f"Failed to check batch queue: {str(e)}") from e
+
+
+@shared_task(bind=True, base=BaseTask, name='workers.tasks.process_delta_lake_batch')
+def process_delta_lake_batch(self) -> Dict[str, Any]:
+    """
+    Process a batch of stock ingestion runs into Delta Lake.
+    
+    This task:
+    1. Atomically retrieves up to DELTA_BATCH_SIZE items (or all if less) from Redis
+    2. Downloads and transforms each stock's JSON data
+    3. Combines all DataFrames into a single DataFrame
+    4. Performs a single merge operation to Delta Lake
+    5. Updates all run states using batch_update_run_states()
+    
+    The task runs on queue_for_delta with concurrency=1 to ensure safe Delta Lake merges.
+    Atomic batch retrieval ensures crash safety (prevents processing same items twice).
+    
+    Returns:
+        Dict with batch_size, successful_count, failed_count, and processed_uri
+    """
+    service = StockIngestionService()
+    
+    logger.info("Starting batch Delta Lake processing")
+    
+    try:
+        # Get cache backend
+        cache_backend = cache._cache
+        
+        # Check if we're using Redis backend
+        if not hasattr(cache_backend, 'get_client'):
+            logger.error(
+                "Cache backend does not support Redis list operations",
+                extra={"backend_type": type(cache_backend).__name__}
+            )
+            raise NonRetryableError(
+                f"Django cache backend ({type(cache_backend).__name__}) does not support Redis list operations"
+            )
+        
+        # Get Redis client
+        redis_client = cache_backend.get_client()
+        
+        # Redis key for batch queue
+        queue_key = 'delta_lake_batch_queue'
+        
+        # Get batch size from settings
+        batch_size = settings.DELTA_BATCH_SIZE
+        
+        # Atomically retrieve batch items from left (head) of list (FIFO: oldest first)
+        # Use pipeline for atomicity (all-or-nothing: get items AND remove them)
+        pipe = redis_client.pipeline()
+        pipe.lrange(queue_key, 0, batch_size - 1)  # Get oldest items from left (FIFO)
+        pipe.ltrim(queue_key, batch_size, -1)  # Remove retrieved items
+        batch_data, _ = pipe.execute()
+        
+        if not batch_data:
+            logger.info("No items in batch queue")
+            return {
+                'batch_size': 0,
+                'successful_count': 0,
+                'failed_count': 0
+            }
+        
+        # Parse batch items
+        batch_items = []
+        for item_bytes in batch_data:
+            try:
+                item = json.loads(item_bytes.decode('utf-8'))
+                batch_items.append(item)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(
+                    "Failed to parse batch item",
+                    extra={"item": item_bytes, "error": str(e)}
+                )
+                # Continue processing other items
+        
+        if not batch_items:
+            logger.warning("No valid items in batch after parsing")
+            return {
+                'batch_size': 0,
+                'successful_count': 0,
+                'failed_count': 0
+            }
+        
+        actual_batch_size = len(batch_items)
+        logger.info(
+            "Retrieved batch from queue",
+            extra={"batch_size": actual_batch_size, "run_ids": [item['run_id'] for item in batch_items]}
+        )
+        
+        # Track runs for state updates
+        run_updates = []
+        runs_to_process = []
+        
+        # Validate runs and transition to DELTA_RUNNING
+        for item in batch_items:
+            run_id_str = item['run_id']
+            ticker = item['ticker'].strip().upper()
+            
+            try:
+                run_uuid = uuid.UUID(run_id_str)
+                run = service.get_run_by_id(run_uuid)
+                
+                # Idempotency check: skip if already processed
+                if run.state in [IngestionState.DELTA_FINISHED, IngestionState.DONE]:
+                    logger.debug(
+                        "Run already processed, skipping",
+                        extra={"run_id": run_id_str, "state": run.state}
+                    )
+                    continue
+                
+                # Must be in QUEUED_FOR_DELTA or DELTA_RUNNING
+                if run.state not in [IngestionState.QUEUED_FOR_DELTA, IngestionState.DELTA_RUNNING]:
+                    logger.warning(
+                        "Run in invalid state for batch processing",
+                        extra={"run_id": run_id_str, "state": run.state}
+                    )
+                    run_updates.append({
+                        'run_id': run_uuid,
+                        'new_state': IngestionState.FAILED,
+                        'error_code': 'INVALID_STATE',
+                        'error_message': f'Run is in {run.state} state, cannot process in batch'
+                    })
+                    continue
+                
+                # Validate raw_data_uri exists
+                if not run.raw_data_uri:
+                    logger.warning(
+                        "Run has no raw_data_uri",
+                        extra={"run_id": run_id_str}
+                    )
+                    run_updates.append({
+                        'run_id': run_uuid,
+                        'new_state': IngestionState.FAILED,
+                        'error_code': 'MISSING_RAW_DATA',
+                        'error_message': 'No raw_data_uri found for run'
+                    })
+                    continue
+                
+                # Transition to DELTA_RUNNING if not already
+                if run.state == IngestionState.QUEUED_FOR_DELTA:
+                    service.update_run_state(
+                        run_id=run_uuid,
+                        new_state=IngestionState.DELTA_RUNNING
+                    )
+                
+                runs_to_process.append({
+                    'run_id': run_uuid,
+                    'run_id_str': run_id_str,
+                    'ticker': ticker,
+                    'raw_data_uri': run.raw_data_uri
+                })
+            
+            except (ValueError, IngestionRunNotFoundError) as e:
+                logger.warning(
+                    "Invalid run_id or run not found",
+                    extra={"run_id": run_id_str, "error": str(e)}
+                )
+                # Can't add to run_updates without valid UUID
+                continue
+        
+        if not runs_to_process:
+            logger.warning("No valid runs to process in batch")
+            # Update failed runs
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            return {
+                'batch_size': actual_batch_size,
+                'successful_count': 0,
+                'failed_count': len(run_updates)
+            }
+        
+        logger.info(
+            "Processing batch",
+            extra={"runs_count": len(runs_to_process)}
+        )
+        
+        # Download and transform all stocks
+        dataframes = []
+        successful_runs = []
+        failed_runs = []
+        
+        for run_info in runs_to_process:
+            run_uuid = run_info['run_id']
+            run_id_str = run_info['run_id_str']
+            ticker = run_info['ticker']
+            raw_data_uri = run_info['raw_data_uri']
+            
+            try:
+                # Download JSON data
+                logger.debug("Downloading raw data", extra={"ticker": ticker, "run_id": run_id_str})
+                json_data = _download_from_storage(raw_data_uri)
+                
+                # Parse and transform
+                data = json.loads(json_data)
+                unified_df = _transform_data_to_polars(data, ticker)
+                
+                dataframes.append(unified_df)
+                successful_runs.append(run_info)
+                
+                logger.debug(
+                    "Transformed data",
+                    extra={"ticker": ticker, "run_id": run_id_str, "rows": len(unified_df)}
+                )
+            
+            except Exception as e:
+                logger.exception(
+                    "Failed to download or transform data",
+                    extra={"ticker": ticker, "run_id": run_id_str}
+                )
+                failed_runs.append({
+                    'run_id': run_uuid,
+                    'run_id_str': run_id_str,
+                    'ticker': ticker,
+                    'error': str(e)
+                })
+        
+        # If all runs failed, mark them as FAILED
+        if not dataframes:
+            logger.error("All runs in batch failed to download/transform")
+            for failed_run in failed_runs:
+                run_updates.append({
+                    'run_id': failed_run['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to download/transform data: {failed_run['error']}"
+                })
+            
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            
+            return {
+                'batch_size': actual_batch_size,
+                'successful_count': 0,
+                'failed_count': len(run_updates)
+            }
+        
+        # Combine all DataFrames
+        logger.info(
+            "Combining DataFrames",
+            extra={"dataframe_count": len(dataframes)}
+        )
+        
+        combined_df = _combine_dataframes(dataframes)
+        
+        logger.info(
+            "Combined DataFrames",
+            extra={
+                "total_rows": len(combined_df),
+                "columns": len(combined_df.columns)
+            }
+        )
+        
+        # Process unified Delta Lake stocks table
+        try:
+            storage_options = _build_storage_options()
+            processed_uri = _process_stocks_table(
+                "BATCH",  # Use "BATCH" as ticker for logging (multiple tickers in batch)
+                combined_df,
+                storage_options
+            )
+            
+            logger.info(
+                "Successfully processed batch to Delta Lake",
+                extra={
+                    "processed_uri": processed_uri,
+                    "total_rows": len(combined_df)
+                }
+            )
+        
+        except Exception as e:
+            logger.exception("Failed to process batch to Delta Lake")
+            # Mark all runs as FAILED
+            for run_info in successful_runs:
+                run_updates.append({
+                    'run_id': run_info['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'DELTA_LAKE_ERROR',
+                    'error_message': f"Failed to merge batch to Delta Lake: {str(e)}"
+                })
+            
+            for failed_run in failed_runs:
+                run_updates.append({
+                    'run_id': failed_run['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to download/transform data: {failed_run['error']}"
+                })
+            
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            
+            raise NonRetryableError(f"Failed to process batch to Delta Lake: {str(e)}") from e
+        
+        # Update successful runs to DELTA_FINISHED, then DONE
+        for run_info in successful_runs:
+            run_updates.append({
+                'run_id': run_info['run_id'],
+                'new_state': IngestionState.DELTA_FINISHED,
+                'processed_data_uri': processed_uri
+            })
+        
+        # Update failed runs to FAILED
+        for failed_run in failed_runs:
+            run_updates.append({
+                'run_id': failed_run['run_id'],
+                'new_state': IngestionState.FAILED,
+                'error_code': 'BATCH_PROCESSING_ERROR',
+                'error_message': f"Failed to download/transform data: {failed_run['error']}"
+            })
+        
+        # Batch update all states
+        if run_updates:
+            result = service.batch_update_run_states(run_updates)
+            
+            logger.info(
+                "Batch state update completed",
+                extra={
+                    "successful": len(result['successful']),
+                    "failed": len(result['failed'])
+                }
+            )
+        
+        # Transition successful runs to DONE
+        done_updates = []
+        for run_info in successful_runs:
+            done_updates.append({
+                'run_id': run_info['run_id'],
+                'new_state': IngestionState.DONE
+            })
+        
+        if done_updates:
+            service.batch_update_run_states(done_updates)
+            
+            # Queue metadata update tasks (non-critical, don't fail batch if this fails)
+            try:
+                from workers.tasks.update_stock_metadata import update_stock_metadata
+                
+                # Get unique tickers from successful runs
+                unique_tickers = set(run_info['ticker'] for run_info in successful_runs)
+                for ticker in unique_tickers:
+                    update_stock_metadata.delay(ticker)
+                
+                logger.debug(
+                    "Queued metadata update tasks",
+                    extra={"ticker_count": len(unique_tickers)}
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to queue metadata update tasks",
+                    extra={"error": str(e)}
+                )
+        
+        successful_count = len(successful_runs)
+        failed_count = len(failed_runs)
+        
+        logger.info(
+            "Completed batch Delta Lake processing",
+            extra={
+                "batch_size": actual_batch_size,
+                "successful_count": successful_count,
+                "failed_count": failed_count,
+                "processed_uri": processed_uri
+            }
+        )
+        
+        return {
+            'batch_size': actual_batch_size,
+            'successful_count': successful_count,
+            'failed_count': failed_count,
+            'processed_uri': processed_uri
+        }
+    
+    except NonRetryableError:
+        raise
+    
+    except Exception as e:
+        logger.exception("Unexpected error in batch Delta Lake processing")
+        raise NonRetryableError(f"Unexpected error in batch processing: {str(e)}") from e
 
 
 def _download_from_storage(data_uri: str) -> bytes:
@@ -797,6 +1322,54 @@ def _process_stocks_table(
             raise DeltaLakeWriteError(
                 f"Failed to create unified stocks table: {str(e)}"
             ) from e
+
+
+def _combine_dataframes(dataframes: List[pl.DataFrame]) -> pl.DataFrame:
+    """
+    Combine multiple Polars DataFrames into a single DataFrame.
+    
+    All DataFrames must have identical schemas. Uses Polars' efficient
+    vertical concatenation which performs lazy evaluation and optimizes
+    memory usage.
+    
+    Args:
+        dataframes: List of Polars DataFrames with identical schemas
+        
+    Returns:
+        pl.DataFrame: Combined DataFrame with all rows from input DataFrames
+        
+    Raises:
+        ValueError: If dataframes list is empty
+        InvalidDataFormatError: If schemas don't match
+    """
+    if not dataframes:
+        raise ValueError("Cannot combine empty list of DataFrames")
+    
+    if len(dataframes) == 1:
+        return dataframes[0]
+    
+    # Validate schemas match (all DataFrames should have same schema from _transform_data_to_polars)
+    first_schema = dataframes[0].schema
+    for idx, df in enumerate(dataframes[1:], start=1):
+        if df.schema != first_schema:
+            raise InvalidDataFormatError(
+                f"DataFrame at index {idx} has different schema than first DataFrame. "
+                f"Expected: {first_schema}, Got: {df.schema}"
+            )
+    
+    # Use Polars' efficient vertical concatenation
+    combined_df = pl.concat(dataframes, how='vertical')
+    
+    logger.info(
+        "Combined DataFrames",
+        extra={
+            "dataframe_count": len(dataframes),
+            "total_rows": len(combined_df),
+            "columns": len(combined_df.columns)
+        }
+    )
+    
+    return combined_df
 
 
 def _transition_to_failed(

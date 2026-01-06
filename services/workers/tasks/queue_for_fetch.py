@@ -238,9 +238,9 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
             )
             logger.debug("Successfully completed fetch", extra={"run_id": run_id, "ticker": ticker})
             
-            # Step 5: Transition to QUEUED_FOR_DELTA and queue the Delta Lake task
+            # Step 5: Transition to QUEUED_FOR_DELTA and add to batch queue
             try:
-                from workers.tasks.queue_for_delta import process_delta_lake
+                from workers.tasks.queue_for_delta import add_to_delta_batch
                 
                 # Update state to QUEUED_FOR_DELTA
                 service.update_run_state(
@@ -252,10 +252,10 @@ def fetch_stock_data(self, run_id: str, ticker: str) -> FetchStockDataResult:
                     extra={"run_id": run_id, "ticker": ticker}
                 )
                 
-                process_delta_lake.delay(str(run_uuid), ticker)
+                add_to_delta_batch.delay(str(run_uuid), ticker)
                 
                 logger.debug(
-                    "Queued Delta Lake processing task",
+                    "Added to Delta Lake batch queue",
                     extra={"run_id": run_id, "ticker": ticker}
                 )
             except Exception as e:
