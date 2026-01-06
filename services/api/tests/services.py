@@ -285,6 +285,64 @@ class StockIngestionServiceTransactionTest(TransactionTestCase):
         # At least one should succeed, others may fail due to invalid transition
         self.assertGreaterEqual(len(results), 1)
 
+    def test_batch_update_run_states_rollback_on_bulk_update_failure(self):
+        """Test that batch_update_run_states rolls back all changes when bulk_update fails."""
+        # Create multiple runs with initial states
+        # Use self.stock (AAPL) from setUp, and create new stocks for others
+        stock2 = Stock.objects.create(ticker='GOOGL')
+        stock3 = Stock.objects.create(ticker='MSFT')
+        
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=stock2,
+            state=IngestionState.FETCHING
+        )
+        run3 = StockIngestionRun.objects.create(
+            stock=stock3,
+            state=IngestionState.FETCHED
+        )
+        
+        # Store original states
+        original_state1 = run1.state
+        original_state2 = run2.state
+        original_state3 = run3.state
+        
+        # Prepare valid updates
+        updates = [
+            {'run_id': run1.id, 'new_state': IngestionState.FETCHING},
+            {'run_id': run2.id, 'new_state': IngestionState.FETCHED},
+            {'run_id': run3.id, 'new_state': IngestionState.QUEUED_FOR_DELTA},
+        ]
+        
+        # Mock bulk_update to raise an exception
+        with patch.object(
+            StockIngestionRun.objects,
+            'bulk_update',
+            side_effect=DatabaseError('Database error during bulk update')
+        ):
+            result = self.service.batch_update_run_states(updates)
+            
+            # Verify all updates are marked as failed
+            self.assertEqual(len(result['successful']), 0)
+            self.assertEqual(len(result['failed']), 3)
+            
+            # Verify all runs remain in their original states (rollback occurred)
+            run1.refresh_from_db()
+            run2.refresh_from_db()
+            run3.refresh_from_db()
+            
+            self.assertEqual(run1.state, original_state1)
+            self.assertEqual(run2.state, original_state2)
+            self.assertEqual(run3.state, original_state3)
+            
+            # Verify timestamps were not updated
+            self.assertIsNone(run1.fetching_started_at)
+            self.assertIsNone(run2.fetching_finished_at)
+            self.assertIsNone(run3.queued_for_delta_at)
+
 
 class StateTransitionTest(TestCase):
     """Tests for valid state transitions in the ETL pipeline."""

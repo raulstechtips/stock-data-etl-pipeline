@@ -541,7 +541,8 @@ class StockIngestionService:
                     'error_message',
                     'raw_data_uri',
                     'processed_data_uri',
-                ] + list(STATE_TIMESTAMP_FIELDS.values())
+                    *(STATE_TIMESTAMP_FIELDS.values()),
+                ]
                 
                 StockIngestionRun.objects.bulk_update(
                     runs_to_update,
