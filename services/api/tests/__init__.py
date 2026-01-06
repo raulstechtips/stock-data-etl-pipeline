@@ -16,7 +16,12 @@ from .models import (
     BulkQueueRunModelTest,
     BulkQueueRunRelationshipTest,
 )
-from .services import StockIngestionServiceTest, StockIngestionServiceTransactionTest, StateTransitionTest
+from .services import (
+    StockIngestionServiceTest, 
+    StockIngestionServiceTransactionTest, 
+    StateTransitionTest,
+    BatchUpdateRunStatesTest
+)
 from .views import (
     StockStatusAPITest,
     QueueForFetchAPITest,
@@ -62,6 +67,7 @@ __all__ = [
     'StockIngestionServiceTest',
     'StockIngestionServiceTransactionTest',
     'StateTransitionTest',
+    'BatchUpdateRunStatesTest',
     'StockStatusAPITest',
     'QueueForFetchAPITest',
     'RunDetailAPITest',
