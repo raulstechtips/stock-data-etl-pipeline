@@ -10,7 +10,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from django.db import transaction
 from django.utils import timezone
@@ -332,6 +332,256 @@ class StockIngestionService:
 
         
         return new_run, True
+    
+    @transaction.atomic
+    def batch_update_run_states(
+        self,
+        updates: List[Dict[str, Any]],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Batch update multiple ingestion run states efficiently.
+        
+        This method updates multiple run states in a single operation, using
+        bulk_update() for efficiency. It validates state transitions for each
+        run and handles partial failures gracefully.
+        
+        Args:
+            updates: List of update dictionaries, each containing:
+                - run_id (UUID): UUID of the ingestion run to update
+                - new_state (str): The new state to transition to
+                - error_code (str, optional): Error code (required if new_state is FAILED)
+                - error_message (str, optional): Error message (required if new_state is FAILED)
+                - processed_data_uri (str, optional): URI to processed data location
+                - raw_data_uri (str, optional): URI to raw data location
+        
+        Returns:
+            Dictionary with two keys:
+                - 'successful': List of successful updates, each containing:
+                    - run_id: UUID of the updated run
+                    - new_state: The new state that was set
+                - 'failed': List of failed updates, each containing:
+                    - run_id: UUID of the run that failed
+                    - reason: String describing why the update failed
+        
+        Note:
+            This method does NOT send Discord notifications. Discord notifications
+            for batch failures should be handled separately.
+        """
+        if not updates:
+            logger.info("batch_update_run_states called with empty updates list")
+            return {'successful': [], 'failed': []}
+        
+        logger.info(
+            "Starting batch state update",
+            extra={"update_count": len(updates)}
+        )
+        
+        # Validate input structure and collect run IDs
+        run_ids = []
+        update_map = {}  # Maps run_id to update dict
+        validation_errors = []
+        
+        for idx, update in enumerate(updates):
+            # Validate required fields
+            if 'run_id' not in update:
+                validation_errors.append({
+                    'index': idx,
+                    'reason': 'Missing required field: run_id'
+                })
+                continue
+            
+            if 'new_state' not in update:
+                validation_errors.append({
+                    'index': idx,
+                    'run_id': update.get('run_id'),
+                    'reason': 'Missing required field: new_state'
+                })
+                continue
+            
+            # Validate run_id is a valid UUID
+            try:
+                run_id = uuid.UUID(str(update['run_id']))
+            except (ValueError, TypeError) as err:
+                validation_errors.append({
+                    'index': idx,
+                    'run_id': update.get('run_id'),
+                    'reason': f'Invalid run_id format: {err}'
+                })
+                continue
+            
+            # Validate new_state is a valid IngestionState
+            new_state = update['new_state']
+            valid_states = [choice[0] for choice in IngestionState.choices]
+            if new_state not in valid_states:
+                validation_errors.append({
+                    'index': idx,
+                    'run_id': str(run_id),
+                    'reason': f'Invalid new_state: {new_state}. Valid states: {valid_states}'
+                })
+                continue
+            
+            # Validate error fields for FAILED state
+            if new_state == IngestionState.FAILED:
+                if 'error_code' not in update or 'error_message' not in update:
+                    validation_errors.append({
+                        'index': idx,
+                        'run_id': str(run_id),
+                        'reason': 'FAILED state requires both error_code and error_message'
+                    })
+                    continue
+                if not update['error_code'] or not update['error_message']:
+                    validation_errors.append({
+                        'index': idx,
+                        'run_id': str(run_id),
+                        'reason': 'error_code and error_message cannot be empty for FAILED state'
+                    })
+                    continue
+            
+            run_ids.append(run_id)
+            update_map[run_id] = update
+        
+        # Fetch all runs with row-level locking
+        try:
+            runs = list(
+                StockIngestionRun.objects
+                .select_for_update()
+                .select_related('stock')
+                .filter(id__in=run_ids)
+            )
+        except Exception as err:
+            logger.exception(
+                "Error fetching runs for batch update",
+                extra={"run_ids": [str(rid) for rid in run_ids]}
+            )
+            # Mark all as failed
+            failed = [
+                {
+                    'run_id': str(rid),
+                    'reason': f'Database error while fetching runs: {err}'
+                }
+                for rid in run_ids
+            ]
+            return {'successful': [], 'failed': failed + validation_errors}
+        
+        # Create a map of run_id to run object
+        run_map = {run.id: run for run in runs}
+        
+        # Track missing runs
+        missing_run_ids = set(run_ids) - set(run_map.keys())
+        failed_updates = []
+        for missing_id in missing_run_ids:
+            failed_updates.append({
+                'run_id': str(missing_id),
+                'reason': 'Run not found'
+            })
+        
+        # Process valid runs
+        runs_to_update = []
+        successful_updates = []
+        now = timezone.now()
+        
+        for run_id, update in update_map.items():
+            if run_id not in run_map:
+                continue  # Already handled as missing
+            
+            run = run_map[run_id]
+            current_state = run.state
+            new_state = update['new_state']
+            
+            # Validate state transition
+            valid_next_states = VALID_TRANSITIONS.get(current_state, [])
+            if new_state not in valid_next_states:
+                reason = (
+                    f"Invalid state transition: {current_state} -> {new_state}. "
+                    f"Valid transitions: {valid_next_states}"
+                )
+                logger.warning(
+                    f"Invalid state transition for run {run_id}: {current_state} -> {new_state}",
+                    extra={"run_id": str(run_id), "current_state": current_state, "new_state": new_state}
+                )
+                failed_updates.append({
+                    'run_id': str(run_id),
+                    'reason': reason
+                })
+                continue
+            
+            # Update state
+            run.state = new_state
+            
+            # Set the appropriate timestamp field
+            timestamp_field = STATE_TIMESTAMP_FIELDS.get(new_state)
+            if timestamp_field:
+                setattr(run, timestamp_field, now)
+            
+            # Update error information if transitioning to FAILED
+            if new_state == IngestionState.FAILED:
+                run.error_code = update['error_code']
+                run.error_message = update['error_message']
+            
+            # Update data URIs if provided
+            if 'raw_data_uri' in update and update['raw_data_uri'] is not None:
+                run.raw_data_uri = update['raw_data_uri']
+            if 'processed_data_uri' in update and update['processed_data_uri'] is not None:
+                run.processed_data_uri = update['processed_data_uri']
+            
+            runs_to_update.append(run)
+            successful_updates.append({
+                'run_id': str(run_id),
+                'new_state': new_state
+            })
+        
+        # Perform bulk update
+        if runs_to_update:
+            try:
+                # Collect all fields that might be updated
+                # Include all possible timestamp fields since different runs may set different ones
+                fields_to_update = [
+                    'state',
+                    'error_code',
+                    'error_message',
+                    'raw_data_uri',
+                    'processed_data_uri',
+                ] + list(STATE_TIMESTAMP_FIELDS.values())
+                
+                StockIngestionRun.objects.bulk_update(
+                    runs_to_update,
+                    fields=fields_to_update,
+                    batch_size=100
+                )
+                logger.info(
+                    "Batch state update completed",
+                    extra={
+                        "successful_count": len(successful_updates),
+                        "failed_count": len(failed_updates) + len(validation_errors),
+                        "total_count": len(updates)
+                    }
+                )
+            except Exception as err:
+                logger.exception(
+                    "Error during bulk_update",
+                    extra={"runs_count": len(runs_to_update)}
+                )
+                # Mark all attempted updates as failed
+                for run in runs_to_update:
+                    failed_updates.append({
+                        'run_id': str(run.id),
+                        'reason': f'Database error during bulk update: {err}'
+                    })
+                successful_updates = []
+        
+        # Combine validation errors with other failures
+        all_failed = failed_updates + [
+            {
+                'run_id': err.get('run_id', f'index_{err.get("index", "unknown")}'),
+                'reason': err['reason']
+            }
+            for err in validation_errors
+        ]
+        
+        return {
+            'successful': successful_updates,
+            'failed': all_failed
+        }
     
     def _send_discord_notification(self, run_id: uuid.UUID, ticker: str, state: str) -> None:
         """

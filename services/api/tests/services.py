@@ -347,3 +347,393 @@ class StateTransitionTest(TestCase):
             
             self.assertEqual(updated.state, IngestionState.FAILED)
             self.assertIsNotNone(updated.failed_at, "failed_at timestamp should be set when transitioning to FAILED")
+
+
+class BatchUpdateRunStatesTest(TestCase):
+    """Tests for batch_update_run_states() method."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.service = StockIngestionService()
+        self.stock1 = Stock.objects.create(ticker='AAPL')
+        self.stock2 = Stock.objects.create(ticker='GOOGL')
+        self.stock3 = Stock.objects.create(ticker='MSFT')
+
+    def test_batch_update_successful_multiple_runs(self):
+        """Test successful batch update of multiple runs."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.FETCHING
+        )
+        run3 = StockIngestionRun.objects.create(
+            stock=self.stock3,
+            state=IngestionState.FETCHED
+        )
+        
+        updates = [
+            {'run_id': run1.id, 'new_state': IngestionState.FETCHING},
+            {'run_id': run2.id, 'new_state': IngestionState.FETCHED},
+            {'run_id': run3.id, 'new_state': IngestionState.QUEUED_FOR_DELTA},
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 3)
+        self.assertEqual(len(result['failed']), 0)
+        
+        # Verify states were updated
+        run1.refresh_from_db()
+        run2.refresh_from_db()
+        run3.refresh_from_db()
+        
+        self.assertEqual(run1.state, IngestionState.FETCHING)
+        self.assertEqual(run2.state, IngestionState.FETCHED)
+        self.assertEqual(run3.state, IngestionState.QUEUED_FOR_DELTA)
+        
+        # Verify timestamps were set
+        self.assertIsNotNone(run1.fetching_started_at)
+        self.assertIsNotNone(run2.fetching_finished_at)
+        self.assertIsNotNone(run3.queued_for_delta_at)
+
+    def test_batch_update_with_failed_state(self):
+        """Test batch update with FAILED state including error info."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.FETCHING
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.QUEUED_FOR_DELTA
+        )
+        
+        updates = [
+            {
+                'run_id': run1.id,
+                'new_state': IngestionState.FAILED,
+                'error_code': 'FETCH_ERROR',
+                'error_message': 'Connection timeout'
+            },
+            {
+                'run_id': run2.id,
+                'new_state': IngestionState.FAILED,
+                'error_code': 'DELTA_ERROR',
+                'error_message': 'Processing failed'
+            },
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 2)
+        self.assertEqual(len(result['failed']), 0)
+        
+        # Verify states and error info
+        run1.refresh_from_db()
+        run2.refresh_from_db()
+        
+        self.assertEqual(run1.state, IngestionState.FAILED)
+        self.assertEqual(run1.error_code, 'FETCH_ERROR')
+        self.assertEqual(run1.error_message, 'Connection timeout')
+        self.assertIsNotNone(run1.failed_at)
+        
+        self.assertEqual(run2.state, IngestionState.FAILED)
+        self.assertEqual(run2.error_code, 'DELTA_ERROR')
+        self.assertEqual(run2.error_message, 'Processing failed')
+        self.assertIsNotNone(run2.failed_at)
+
+    def test_batch_update_with_mixed_valid_invalid_transitions(self):
+        """Test batch update with some valid and some invalid transitions."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.FETCHING
+        )
+        run3 = StockIngestionRun.objects.create(
+            stock=self.stock3,
+            state=IngestionState.DONE  # Terminal state
+        )
+        
+        updates = [
+            {'run_id': run1.id, 'new_state': IngestionState.FETCHING},  # Valid
+            {'run_id': run2.id, 'new_state': IngestionState.DONE},  # Invalid: FETCHING -> DONE
+            {'run_id': run3.id, 'new_state': IngestionState.FETCHING},  # Invalid: DONE -> FETCHING
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 1)
+        self.assertEqual(len(result['failed']), 2)
+        
+        # Verify successful update
+        run1.refresh_from_db()
+        self.assertEqual(run1.state, IngestionState.FETCHING)
+        
+        # Verify failed updates didn't change state
+        run2.refresh_from_db()
+        run3.refresh_from_db()
+        self.assertEqual(run2.state, IngestionState.FETCHING)
+        self.assertEqual(run3.state, IngestionState.DONE)
+        
+        # Check failure reasons
+        failed_run_ids = {f['run_id'] for f in result['failed']}
+        self.assertIn(str(run2.id), failed_run_ids)
+        self.assertIn(str(run3.id), failed_run_ids)
+
+    def test_batch_update_with_missing_runs(self):
+        """Test batch update with non-existent run IDs."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        fake_id = uuid.uuid4()
+        
+        updates = [
+            {'run_id': run1.id, 'new_state': IngestionState.FETCHING},
+            {'run_id': fake_id, 'new_state': IngestionState.FETCHING},
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 1)
+        self.assertEqual(len(result['failed']), 1)
+        
+        # Verify successful update
+        run1.refresh_from_db()
+        self.assertEqual(run1.state, IngestionState.FETCHING)
+        
+        # Check failure reason
+        failed = result['failed'][0]
+        self.assertEqual(failed['run_id'], str(fake_id))
+        self.assertIn('not found', failed['reason'].lower())
+
+    def test_batch_update_with_missing_required_fields(self):
+        """Test batch update with missing required fields."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        updates = [
+            {'run_id': run1.id},  # Missing new_state
+            {'new_state': IngestionState.FETCHING},  # Missing run_id
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 0)
+        self.assertEqual(len(result['failed']), 2)
+        
+        # Verify run wasn't updated
+        run1.refresh_from_db()
+        self.assertEqual(run1.state, IngestionState.QUEUED_FOR_FETCH)
+
+    def test_batch_update_with_invalid_run_id_format(self):
+        """Test batch update with invalid run_id format."""
+        updates = [
+            {'run_id': 'not-a-uuid', 'new_state': IngestionState.FETCHING},
+            {'run_id': 12345, 'new_state': IngestionState.FETCHING},
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 0)
+        self.assertEqual(len(result['failed']), 2)
+        
+        for failed in result['failed']:
+            self.assertIn('Invalid run_id format', failed['reason'])
+
+    def test_batch_update_with_invalid_state(self):
+        """Test batch update with invalid state value."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        
+        updates = [
+            {'run_id': run1.id, 'new_state': 'INVALID_STATE'},
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 0)
+        self.assertEqual(len(result['failed']), 1)
+        
+        failed = result['failed'][0]
+        self.assertIn('Invalid new_state', failed['reason'])
+
+    def test_batch_update_failed_state_missing_error_fields(self):
+        """Test batch update to FAILED state without error_code/error_message."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.FETCHING
+        )
+        
+        updates = [
+            {'run_id': run1.id, 'new_state': IngestionState.FAILED},  # Missing error fields
+            {
+                'run_id': run1.id,
+                'new_state': IngestionState.FAILED,
+                'error_code': 'ERROR',
+                # Missing error_message
+            },
+            {
+                'run_id': run1.id,
+                'new_state': IngestionState.FAILED,
+                'error_message': 'Error message',
+                # Missing error_code
+            },
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 0)
+        self.assertEqual(len(result['failed']), 3)
+        
+        # Verify run wasn't updated
+        run1.refresh_from_db()
+        self.assertEqual(run1.state, IngestionState.FETCHING)
+
+    def test_batch_update_with_data_uris(self):
+        """Test batch update with data URI fields."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.FETCHING
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.DELTA_RUNNING
+        )
+        
+        updates = [
+            {
+                'run_id': run1.id,
+                'new_state': IngestionState.FETCHED,
+                'raw_data_uri': 's3://bucket/raw/AAPL'
+            },
+            {
+                'run_id': run2.id,
+                'new_state': IngestionState.DELTA_FINISHED,
+                'processed_data_uri': 's3://bucket/processed/GOOGL'
+            },
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 2)
+        
+        # Verify data URIs were set
+        run1.refresh_from_db()
+        run2.refresh_from_db()
+        
+        self.assertEqual(run1.raw_data_uri, 's3://bucket/raw/AAPL')
+        self.assertEqual(run2.processed_data_uri, 's3://bucket/processed/GOOGL')
+
+    def test_batch_update_empty_list(self):
+        """Test batch update with empty updates list."""
+        result = self.service.batch_update_run_states([])
+        
+        self.assertEqual(len(result['successful']), 0)
+        self.assertEqual(len(result['failed']), 0)
+
+    def test_batch_update_timestamp_fields(self):
+        """Test that timestamp fields are correctly set for each state."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.FETCHING
+        )
+        run3 = StockIngestionRun.objects.create(
+            stock=self.stock3,
+            state=IngestionState.FETCHED
+        )
+        
+        updates = [
+            {'run_id': run1.id, 'new_state': IngestionState.FETCHING},
+            {'run_id': run2.id, 'new_state': IngestionState.FETCHED},
+            {'run_id': run3.id, 'new_state': IngestionState.QUEUED_FOR_DELTA},
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        self.assertEqual(len(result['successful']), 3)
+        
+        # Verify timestamps
+        run1.refresh_from_db()
+        run2.refresh_from_db()
+        run3.refresh_from_db()
+        
+        self.assertIsNotNone(run1.fetching_started_at)
+        self.assertIsNotNone(run2.fetching_finished_at)
+        self.assertIsNotNone(run3.queued_for_delta_at)
+
+    def test_batch_update_no_discord_notifications(self):
+        """Test that batch update does NOT send Discord notifications."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.FETCHING
+        )
+        
+        updates = [
+            {
+                'run_id': run1.id,
+                'new_state': IngestionState.FAILED,
+                'error_code': 'TEST_ERROR',
+                'error_message': 'Test failure'
+            },
+        ]
+        
+        # Mock the Discord notification task to ensure it's not called
+        with patch('workers.tasks.send_discord_notification.send_discord_notification.delay') as mock_discord:
+            result = self.service.batch_update_run_states(updates)
+            
+            # Verify update succeeded
+            self.assertEqual(len(result['successful']), 1)
+            
+            # Verify Discord notification was NOT called
+            mock_discord.assert_not_called()
+
+    def test_batch_update_partial_failure_continues_processing(self):
+        """Test that partial failures don't prevent other updates from succeeding."""
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_FETCH
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.FETCHING
+        )
+        run3 = StockIngestionRun.objects.create(
+            stock=self.stock3,
+            state=IngestionState.DONE  # Terminal, can't transition
+        )
+        
+        updates = [
+            {'run_id': run1.id, 'new_state': IngestionState.FETCHING},  # Should succeed
+            {'run_id': run2.id, 'new_state': IngestionState.FETCHED},  # Should succeed
+            {'run_id': run3.id, 'new_state': IngestionState.FETCHING},  # Should fail
+        ]
+        
+        result = self.service.batch_update_run_states(updates)
+        
+        # Two should succeed, one should fail
+        self.assertEqual(len(result['successful']), 2)
+        self.assertEqual(len(result['failed']), 1)
+        
+        # Verify successful updates
+        run1.refresh_from_db()
+        run2.refresh_from_db()
+        self.assertEqual(run1.state, IngestionState.FETCHING)
+        self.assertEqual(run2.state, IngestionState.FETCHED)
+        
+        # Verify failed update didn't change
+        run3.refresh_from_db()
+        self.assertEqual(run3.state, IngestionState.DONE)
