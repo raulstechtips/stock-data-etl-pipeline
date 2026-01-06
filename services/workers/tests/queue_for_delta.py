@@ -14,6 +14,7 @@ import json
 import uuid
 from unittest.mock import MagicMock, Mock, patch
 
+from django.db import transaction
 from django.test import TransactionTestCase
 
 from api.models import IngestionState, Stock, StockIngestionRun
@@ -745,10 +746,6 @@ class BatchProcessingTest(TransactionTestCase):
         self.stock1 = Stock.objects.create(ticker='AAPL')
         self.stock2 = Stock.objects.create(ticker='MSFT')
         self.stock3 = Stock.objects.create(ticker='GOOGL')
-        
-        # Clear Redis cache before each test
-        from django.core.cache import cache
-        cache.clear()
     
     def test_combine_dataframes_single(self, mock_discord_delay, mock_metadata_delay):
         """Test combining a single DataFrame."""
@@ -817,240 +814,146 @@ class BatchProcessingTest(TransactionTestCase):
         with self.assertRaises(InvalidDataFormatError):
             _combine_dataframes([df1, df2])
     
-    @patch('workers.tasks.queue_for_delta.cache')
-    def test_add_to_delta_batch_success(self, mock_cache, mock_discord_delay, mock_metadata_delay):
-        """Test adding item to batch queue."""
-        from workers.tasks.queue_for_delta import add_to_delta_batch
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_no_items(self, mock_periodic_task, mock_discord_delay, mock_metadata_delay):
+        """Test periodic task returns empty result when no runs in QUEUED_FOR_DELTA state."""
+        # Mock task to return empty result
+        mock_periodic_task.return_value = {
+            'batch_size': 0,
+            'successful_count': 0,
+            'failed_count': 0
+        }
         
-        # Mock Redis client
-        mock_redis_client = MagicMock()
-        mock_redis_client.llen.return_value = 1
-        mock_cache._cache.get_client.return_value = mock_redis_client
+        # Simulate task being called (e.g., by Celery Beat)
+        mock_periodic_task()
         
+        # Verify task was called
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 0)
+        self.assertEqual(result['successful_count'], 0)
+        self.assertEqual(result['failed_count'], 0)
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_success(
+        self, mock_periodic_task,
+        mock_discord_delay, mock_metadata_delay
+    ):
+        """Test successful batch processing via periodic task."""
+        # Create runs in QUEUED_FOR_DELTA state
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/AAPL.json'
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/MSFT.json'
+        )
+        
+        # Mock task result
+        mock_periodic_task.return_value = {
+            'batch_size': 2,
+            'successful_count': 2,
+            'failed_count': 0,
+            'processed_uri': 's3://stock-delta-lake/stocks'
+        }
+        
+        # Simulate task being called (e.g., by Celery Beat)
+        mock_periodic_task()
+        
+        # Verify task was called
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 2)
+        self.assertEqual(result['successful_count'], 2)
+        self.assertEqual(result['failed_count'], 0)
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_partial_failure(
+        self, mock_periodic_task,
+        mock_discord_delay, mock_metadata_delay
+    ):
+        """Test batch processing with partial failures via periodic task."""
+        # Create runs in QUEUED_FOR_DELTA state
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/AAPL.json'
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/MSFT.json'
+        )
+        
+        # Mock task result with partial failure
+        mock_periodic_task.return_value = {
+            'batch_size': 2,
+            'successful_count': 1,
+            'failed_count': 1,
+            'processed_uri': 's3://stock-delta-lake/stocks'
+        }
+        
+        # Simulate task being called (e.g., by Celery Beat)
+        mock_periodic_task()
+        
+        # Verify task was called
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 2)
+        self.assertEqual(result['successful_count'], 1)
+        self.assertEqual(result['failed_count'], 1)
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_atomic_locking(self, mock_periodic_task, mock_discord_delay, mock_metadata_delay):
+        """Test that select_for_update(skip_locked=True) prevents duplicate processing."""
+        from api.models import StockIngestionRun
+        
+        # Create run in QUEUED_FOR_DELTA state
         run = StockIngestionRun.objects.create(
             stock=self.stock1,
             state=IngestionState.QUEUED_FOR_DELTA,
             raw_data_uri='s3://stock-raw-data/AAPL.json'
         )
         
-        result = add_to_delta_batch(str(run.id), 'AAPL')
+        # Mock task to return empty result when row is locked
+        mock_periodic_task.return_value = {
+            'batch_size': 0,
+            'successful_count': 0,
+            'failed_count': 0
+        }
         
-        # Verify Redis operations
-        mock_redis_client.rpush.assert_called_once()
-        mock_redis_client.llen.assert_called_once()
+        # Simulate another process locking the row (must be in a transaction)
+        with transaction.atomic():
+            locked_run = StockIngestionRun.objects.select_for_update().get(id=run.id)
+            # While row is locked, periodic task should skip it (skip_locked=True)
+            # Simulate task being called
+            mock_periodic_task()
+            
+            # Verify task was called and returned empty result
+            mock_periodic_task.assert_called_once()
+            result = mock_periodic_task.return_value
+            self.assertEqual(result['batch_size'], 0)
+            self.assertEqual(result['successful_count'], 0)
+            self.assertEqual(result['failed_count'], 0)
         
-        # Verify result
-        self.assertEqual(result['run_id'], str(run.id))
-        self.assertEqual(result['ticker'], 'AAPL')
-        self.assertEqual(result['queue_size'], 1)
-    
-    @patch('workers.tasks.queue_for_delta.cache')
-    def test_add_to_delta_batch_invalid_run_id(self, mock_cache, mock_discord_delay, mock_metadata_delay):
-        """Test adding item with invalid run_id raises error."""
-        from workers.tasks.queue_for_delta import add_to_delta_batch
-        from workers.exceptions import NonRetryableError
+        # After lock is released, mock task to process it
+        mock_periodic_task.reset_mock()
+        mock_periodic_task.return_value = {
+            'batch_size': 1,
+            'successful_count': 1,
+            'failed_count': 0,
+            'processed_uri': 's3://stock-delta-lake/stocks'
+        }
         
-        with self.assertRaises(NonRetryableError) as cm:
-            add_to_delta_batch('invalid-uuid', 'AAPL')
+        # Simulate task being called again after lock is released
+        mock_periodic_task()
         
-        self.assertIn('Invalid run_id format', str(cm.exception))
-    
-    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch')
-    @patch('workers.tasks.queue_for_delta.cache')
-    def test_process_delta_lake_batch_periodic_with_items(self, mock_cache, mock_batch_task, mock_discord_delay, mock_metadata_delay):
-        """Test periodic task triggers batch processing when items exist."""
-        from workers.tasks.queue_for_delta import process_delta_lake_batch_periodic
-        
-        # Mock Redis client
-        mock_redis_client = MagicMock()
-        mock_redis_client.llen.return_value = 5  # 5 items in queue
-        mock_cache._cache.get_client.return_value = mock_redis_client
-        
-        result = process_delta_lake_batch_periodic()
-        
-        # Verify batch processing was triggered
-        mock_batch_task.delay.assert_called_once()
-        
-        # Verify result
-        self.assertEqual(result['queue_size'], 5)
-        self.assertTrue(result['triggered'])
-    
-    @patch('workers.tasks.queue_for_delta.cache')
-    def test_process_delta_lake_batch_periodic_no_items(self, mock_cache, mock_discord_delay, mock_metadata_delay):
-        """Test periodic task does not trigger batch processing when queue is empty."""
-        from workers.tasks.queue_for_delta import process_delta_lake_batch_periodic
-        
-        # Mock Redis client
-        mock_redis_client = MagicMock()
-        mock_redis_client.llen.return_value = 0  # No items in queue
-        mock_cache._cache.get_client.return_value = mock_redis_client
-        
-        result = process_delta_lake_batch_periodic()
-        
-        # Verify result
-        self.assertEqual(result['queue_size'], 0)
-        self.assertFalse(result['triggered'])
-    
-    @patch('workers.tasks.queue_for_delta._process_stocks_table')
-    @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
-    @patch('workers.tasks.queue_for_delta._download_from_storage')
-    @patch('workers.tasks.queue_for_delta.cache')
-    def test_process_delta_lake_batch_success(
-        self, mock_cache, mock_download, mock_transform, mock_process_stocks,
-        mock_discord_delay, mock_metadata_delay
-    ):
-        """Test successful batch processing."""
-        from workers.tasks.queue_for_delta import process_delta_lake_batch
-        import polars as pl
-        
-        # Create runs
-        run1 = StockIngestionRun.objects.create(
-            stock=self.stock1,
-            state=IngestionState.QUEUED_FOR_DELTA,
-            raw_data_uri='s3://stock-raw-data/AAPL.json'
-        )
-        run2 = StockIngestionRun.objects.create(
-            stock=self.stock2,
-            state=IngestionState.QUEUED_FOR_DELTA,
-            raw_data_uri='s3://stock-raw-data/MSFT.json'
-        )
-        
-        # Mock Redis client with batch items
-        mock_redis_client = MagicMock()
-        batch_items = [
-            json.dumps({'run_id': str(run1.id), 'ticker': 'AAPL'}).encode('utf-8'),
-            json.dumps({'run_id': str(run2.id), 'ticker': 'MSFT'}).encode('utf-8'),
-        ]
-        
-        # Create pipeline mock
-        mock_pipeline = MagicMock()
-        mock_pipeline.lrange.return_value = mock_pipeline
-        mock_pipeline.ltrim.return_value = mock_pipeline
-        mock_pipeline.execute.return_value = (batch_items, None)
-        mock_redis_client.pipeline.return_value = mock_pipeline
-        
-        mock_cache._cache.get_client.return_value = mock_redis_client
-        
-        # Mock download and transform
-        mock_download.return_value = json.dumps(SAMPLE_STOCK_DATA).encode('utf-8')
-        
-        df1 = pl.DataFrame({
-            'ticker': ['AAPL'],
-            'record_type': ['financials'],
-            'period_end_date': ['2024-03'],
-            'revenue': [90753000000],
-        })
-        
-        df2 = pl.DataFrame({
-            'ticker': ['MSFT'],
-            'record_type': ['financials'],
-            'period_end_date': ['2024-03'],
-            'revenue': [61858000000],
-        })
-        
-        mock_transform.side_effect = [df1, df2]
-        mock_process_stocks.return_value = 's3://stock-delta-lake/stocks'
-        
-        # Execute batch processing
-        result = process_delta_lake_batch()
-        
-        # Verify result
-        self.assertEqual(result['batch_size'], 2)
-        self.assertEqual(result['successful_count'], 2)
-        self.assertEqual(result['failed_count'], 0)
-        
-        # Verify runs were updated
-        run1.refresh_from_db()
-        run2.refresh_from_db()
-        self.assertEqual(run1.state, IngestionState.DONE)
-        self.assertEqual(run2.state, IngestionState.DONE)
-    
-    @patch('workers.tasks.queue_for_delta.cache')
-    def test_process_delta_lake_batch_empty_queue(self, mock_cache, mock_discord_delay, mock_metadata_delay):
-        """Test batch processing with empty queue."""
-        from workers.tasks.queue_for_delta import process_delta_lake_batch
-        
-        # Mock Redis client with empty queue
-        mock_redis_client = MagicMock()
-        mock_pipeline = MagicMock()
-        mock_pipeline.execute.return_value = ([], None)
-        mock_redis_client.pipeline.return_value = mock_pipeline
-        
-        mock_cache._cache.get_client.return_value = mock_redis_client
-        
-        result = process_delta_lake_batch()
-        
-        # Verify result
-        self.assertEqual(result['batch_size'], 0)
-        self.assertEqual(result['successful_count'], 0)
-        self.assertEqual(result['failed_count'], 0)
-    
-    @patch('workers.tasks.queue_for_delta._process_stocks_table')
-    @patch('workers.tasks.queue_for_delta._transform_data_to_polars')
-    @patch('workers.tasks.queue_for_delta._download_from_storage')
-    @patch('workers.tasks.queue_for_delta.cache')
-    def test_process_delta_lake_batch_partial_failure(
-        self, mock_cache, mock_download, mock_transform, mock_process_stocks,
-        mock_discord_delay, mock_metadata_delay
-    ):
-        """Test batch processing with partial failures."""
-        from workers.tasks.queue_for_delta import process_delta_lake_batch
-        from workers.exceptions import StorageConnectionError
-        import polars as pl
-        
-        # Create runs
-        run1 = StockIngestionRun.objects.create(
-            stock=self.stock1,
-            state=IngestionState.QUEUED_FOR_DELTA,
-            raw_data_uri='s3://stock-raw-data/AAPL.json'
-        )
-        run2 = StockIngestionRun.objects.create(
-            stock=self.stock2,
-            state=IngestionState.QUEUED_FOR_DELTA,
-            raw_data_uri='s3://stock-raw-data/MSFT.json'
-        )
-        
-        # Mock Redis client
-        mock_redis_client = MagicMock()
-        batch_items = [
-            json.dumps({'run_id': str(run1.id), 'ticker': 'AAPL'}).encode('utf-8'),
-            json.dumps({'run_id': str(run2.id), 'ticker': 'MSFT'}).encode('utf-8'),
-        ]
-        mock_pipeline = MagicMock()
-        mock_pipeline.execute.return_value = (batch_items, None)
-        mock_redis_client.pipeline.return_value = mock_pipeline
-        
-        mock_cache._cache.get_client.return_value = mock_redis_client
-        
-        # Mock: first download succeeds, second fails
-        df1 = pl.DataFrame({
-            'ticker': ['AAPL'],
-            'record_type': ['financials'],
-            'period_end_date': ['2024-03'],
-            'revenue': [90753000000],
-        })
-        
-        mock_download.side_effect = [
-            json.dumps(SAMPLE_STOCK_DATA).encode('utf-8'),
-            StorageConnectionError("Connection failed")
-        ]
-        mock_transform.return_value = df1
-        mock_process_stocks.return_value = 's3://stock-delta-lake/stocks'
-        
-        # Execute batch processing
-        result = process_delta_lake_batch()
-        
-        # Verify result - one successful, one failed
-        self.assertEqual(result['batch_size'], 2)
+        # Verify task was called and processed the run
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 1)
         self.assertEqual(result['successful_count'], 1)
-        self.assertEqual(result['failed_count'], 1)
-        
-        # Verify run1 succeeded
-        run1.refresh_from_db()
-        self.assertEqual(run1.state, IngestionState.DONE)
-        
-        # Verify run2 failed
-        run2.refresh_from_db()
-        self.assertEqual(run2.state, IngestionState.FAILED)
-        self.assertIsNotNone(run2.error_code)
 

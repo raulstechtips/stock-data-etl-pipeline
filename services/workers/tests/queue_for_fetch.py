@@ -28,7 +28,6 @@ from workers.exceptions import (
 from workers.tasks.queue_for_fetch import fetch_stock_data
 
 
-@patch('workers.tasks.queue_for_delta.process_delta_lake.delay')
 @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
 class FetchStockDataTaskTest(TransactionTestCase):
     """Tests for the fetch_stock_data Celery task."""
@@ -40,8 +39,8 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_successful_task_execution(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
-        """Test successful task execution from QUEUED_FOR_FETCH to FETCHED."""
+    def test_successful_task_execution(self, mock_fetch, mock_upload, mock_discord_delay):
+        """Test successful task execution from QUEUED_FOR_FETCH to QUEUED_FOR_DELTA."""
         # Create run
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -67,13 +66,11 @@ class FetchStockDataTaskTest(TransactionTestCase):
         self.assertIsNotNone(run.raw_data_uri)
         self.assertIsNotNone(run.fetching_started_at)
         self.assertIsNotNone(run.fetching_finished_at)
-        
-        # Verify Delta Lake task was queued
-        mock_delta_delay.assert_called_once_with(str(run.id), 'AAPL')
+        # Run accumulates in database in QUEUED_FOR_DELTA state for periodic task to process
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_fetching_state_retry_proceeds(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_fetching_state_retry_proceeds(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that a run in FETCHING state (from a previous retry) can proceed."""
         # Create run already in FETCHING state (from a previous retry attempt)
         run = StockIngestionRun.objects.create(
@@ -99,13 +96,11 @@ class FetchStockDataTaskTest(TransactionTestCase):
         self.assertEqual(run.state, IngestionState.QUEUED_FOR_DELTA)
         self.assertIsNotNone(run.raw_data_uri)
         self.assertIsNotNone(run.fetching_finished_at)
-        
-        # Verify Delta Lake task was queued
-        mock_delta_delay.assert_called_once_with(str(run.id), 'AAPL')
+        # Run accumulates in database in QUEUED_FOR_DELTA state for periodic task to process
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_idempotency_already_fetched(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_idempotency_already_fetched(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that task is idempotent when run is already FETCHED."""
         # Create run that's already FETCHED
         run = StockIngestionRun.objects.create(
@@ -127,7 +122,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_idempotency_queued_for_delta(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_idempotency_queued_for_delta(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that task is idempotent when run is already QUEUED_FOR_DELTA."""
         # Create run that's already QUEUED_FOR_DELTA
         run = StockIngestionRun.objects.create(
@@ -150,7 +145,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_idempotency_delta_running(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_idempotency_delta_running(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that task is idempotent when run is already DELTA_RUNNING."""
         # Create run that's already DELTA_RUNNING
         run = StockIngestionRun.objects.create(
@@ -173,7 +168,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_idempotency_delta_finished(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_idempotency_delta_finished(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that task is idempotent when run is already DELTA_FINISHED."""
         # Create run that's already DELTA_FINISHED
         run = StockIngestionRun.objects.create(
@@ -196,7 +191,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_idempotency_done(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_idempotency_done(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that task is idempotent when run is already DONE."""
         # Create run that's already DONE
         run = StockIngestionRun.objects.create(
@@ -217,7 +212,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
         mock_fetch.assert_not_called()
         mock_upload.assert_not_called()
     
-    def test_failed_state_raises_non_retryable_error(self, mock_discord_delay, mock_delta_delay):
+    def test_failed_state_raises_non_retryable_error(self, mock_discord_delay):
         """Test that attempting to fetch a run already in FAILED state raises NonRetryableError."""
         # Create run that's already FAILED
         run = StockIngestionRun.objects.create(
@@ -235,7 +230,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
         run.refresh_from_db()
         self.assertEqual(run.state, IngestionState.FAILED)
     
-    def test_run_not_found(self, mock_discord_delay, mock_delta_delay):
+    def test_run_not_found(self, mock_discord_delay):
         """Test that task fails if run doesn't exist."""
         fake_id = str(uuid.uuid4())
         
@@ -245,7 +240,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_authentication_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_api_authentication_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that API authentication errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -267,7 +262,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_not_found_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_api_not_found_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that API not found errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -287,7 +282,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_storage_auth_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_storage_auth_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that storage auth errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -309,7 +304,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_storage_bucket_not_found_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_storage_bucket_not_found_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that StorageBucketNotFoundError transitions run to FAILED."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -331,7 +326,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_rate_limit_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_api_rate_limit_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that API rate limit (429) errors transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -351,7 +346,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_connection_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_api_connection_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that API connection errors transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -371,7 +366,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_api_server_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_api_server_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that API server errors (500+) transitions to failed state."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -391,7 +386,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_empty_file_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_empty_file_error_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that empty file errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -413,7 +408,7 @@ class FetchStockDataTaskTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_invalid_json_format_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_invalid_json_format_transitions_to_failed(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that invalid JSON format errors transition run to FAILED."""
         run = StockIngestionRun.objects.create(
             stock=self.stock,
@@ -435,7 +430,6 @@ class FetchStockDataTaskTest(TransactionTestCase):
         self.assertEqual(run.error_code, 'API_ERROR')
         self.assertIn('not valid JSON', run.error_message)
 
-@patch('workers.tasks.queue_for_delta.process_delta_lake.delay')
 @patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
 class FetchStockDataInvalidInputTest(TransactionTestCase):
     """Tests for invalid input handling in fetch_stock_data task."""
@@ -447,7 +441,7 @@ class FetchStockDataInvalidInputTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_malformed_uuid_raises_non_retryable_error(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_malformed_uuid_raises_non_retryable_error(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that a malformed run_id (invalid UUID) raises NonRetryableError."""
         # Execute task with malformed UUID
         malformed_run_id = 'not-a-valid-uuid'
@@ -465,7 +459,7 @@ class FetchStockDataInvalidInputTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_malformed_uuid_does_not_crash_with_various_formats(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_malformed_uuid_does_not_crash_with_various_formats(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that various malformed UUID formats are handled gracefully."""
         malformed_ids = [
             'not-a-uuid',
@@ -486,7 +480,7 @@ class FetchStockDataInvalidInputTest(TransactionTestCase):
     
     @patch('workers.tasks.queue_for_fetch._upload_to_storage')
     @patch('workers.tasks.queue_for_fetch._fetch_from_api')
-    def test_valid_uuid_proceeds_normally(self, mock_fetch, mock_upload, mock_discord_delay, mock_delta_delay):
+    def test_valid_uuid_proceeds_normally(self, mock_fetch, mock_upload, mock_discord_delay):
         """Test that a valid UUID proceeds normally after the fix."""
         # Create run with valid UUID
         run = StockIngestionRun.objects.create(
@@ -506,5 +500,7 @@ class FetchStockDataInvalidInputTest(TransactionTestCase):
         self.assertEqual(result['state'], IngestionState.QUEUED_FOR_DELTA)
         self.assertFalse(result['skipped'])
         
-        # Verify Delta Lake task was queued
-        mock_delta_delay.assert_called_once_with(str(run.id), 'AAPL')
+        # Verify run state transitioned to QUEUED_FOR_DELTA
+        run.refresh_from_db()
+        self.assertEqual(run.state, IngestionState.QUEUED_FOR_DELTA)
+        # Run accumulates in database in QUEUED_FOR_DELTA state for periodic task to process
