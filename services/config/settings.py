@@ -301,9 +301,7 @@ CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 # External API configuration for fetching stock data
 STOCK_DATA_API_TIMEOUT = int(os.environ.get('STOCK_DATA_API_TIMEOUT', '300')) # 5 minutes
 STOCK_DATA_API_URL = os.environ.get('STOCK_DATA_API_URL', '')
-# STOCK_DATA_API_URL = "https://sdpm.prod.raulstechtips.dev/api/data/all-data"
 STOCK_DATA_API_KEY = os.environ.get('STOCK_DATA_API_KEY', '')
-# STOCK_DATA_API_KEY = ''
 
 # S3/MinIO configuration for raw data storage (fetched JSON files)
 STOCK_RAW_DATA_BUCKET = os.environ.get('STOCK_RAW_DATA_BUCKET', 'stock-raw-data')
