@@ -82,6 +82,10 @@ app.conf.beat_schedule = {
     'process-delta-lake-batch-periodic': {
         'task': 'workers.tasks.process_delta_lake_batch_periodic',
         'schedule': schedule(run_every=timedelta(seconds=settings.DELTA_PERIOD_INTERVAL)),
+        'options': {
+            'queue': 'queue_for_delta',
+            'routing_key': 'queue_for_delta',
+        }
     },
 }
 
