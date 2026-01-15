@@ -13,7 +13,7 @@ import logging
 from datetime import timedelta
 from celery import Celery
 from celery.schedules import schedule
-from kombu import Queue
+from kombu import Exchange, Queue
 from django.conf import settings
 logger = logging.getLogger(__name__)
 
@@ -29,21 +29,28 @@ app = Celery('stock_etl_pipeline')
 # Load configuration from Django settings with CELERY_ prefix
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
+# Define the exchange explicitly to prevent routing key fallback to 'celery' default
+# This ensures consistent routing behavior across worker restarts and deployments
+celery_exchange = Exchange('celery', type='direct', durable=True)
+
 # Configure queues based on environment
 # Use quorum queues in production/staging for HA, regular queues in development
 if APP_ENV in ['prod', 'stage']:
     # Configure quorum queues for high availability
     # Each queue is explicitly defined as a quorum queue for production HA deployment
     # Quorum queues provide better data safety and fault tolerance in RabbitMQ clusters
-    # Explicit routing_key ensures consistent routing between publishers and consumers
+    # Explicit exchange and routing_key ensures consistent routing between publishers and consumers
     app.conf.task_queues = (
-        Queue('queue_for_fetch', 
+        Queue('queue_for_fetch',
+              exchange=celery_exchange,
               routing_key='queue_for_fetch',
               queue_arguments={'x-queue-type': 'quorum'}),
-        Queue('queue_for_delta', 
+        Queue('queue_for_delta',
+              exchange=celery_exchange,
               routing_key='queue_for_delta',
               queue_arguments={'x-queue-type': 'quorum'}),
-        Queue('send_discord_notifications', 
+        Queue('send_discord_notifications',
+              exchange=celery_exchange,
               routing_key='send_discord_notifications',
               queue_arguments={'x-queue-type': 'quorum'}),
     )
@@ -55,11 +62,17 @@ if APP_ENV in ['prod', 'stage']:
     }
 else:
     # Use regular queues in development
-    # Explicit routing_key ensures consistent routing between publishers and consumers
+    # Explicit exchange and routing_key ensures consistent routing between publishers and consumers
     app.conf.task_queues = (
-        Queue('queue_for_fetch', routing_key='queue_for_fetch'),
-        Queue('queue_for_delta', routing_key='queue_for_delta'),
-        Queue('send_discord_notifications', routing_key='send_discord_notifications'),
+        Queue('queue_for_fetch',
+              exchange=celery_exchange,
+              routing_key='queue_for_fetch'),
+        Queue('queue_for_delta',
+              exchange=celery_exchange,
+              routing_key='queue_for_delta'),
+        Queue('send_discord_notifications',
+              exchange=celery_exchange,
+              routing_key='send_discord_notifications'),
     )
 
 # Configure task routing to separate queues
@@ -83,6 +96,7 @@ app.conf.beat_schedule = {
         'task': 'workers.tasks.process_delta_lake_batch_periodic',
         'schedule': schedule(run_every=timedelta(seconds=settings.DELTA_PERIOD_INTERVAL)),
         'options': {
+            'exchange': 'celery',  # Explicit exchange name (matches celery_exchange)
             'queue': 'queue_for_delta',
             'routing_key': 'queue_for_delta',
         }
