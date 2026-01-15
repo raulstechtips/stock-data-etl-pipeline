@@ -33,6 +33,17 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # This ensures consistent routing behavior across worker restarts and deployments
 celery_exchange = Exchange('celery', type='direct', durable=True)
 
+# Override Celery's default queue/routing_key to prevent automatic 'celery' routing key bindings
+# Without this, workers create BOTH explicit bindings AND default 'celery' bindings
+# We set defaults to match our primary queue to avoid stray 'celery' routing key bindings
+app.conf.task_default_queue = 'queue_for_fetch'
+app.conf.task_default_exchange = 'celery'
+app.conf.task_default_routing_key = 'queue_for_fetch'
+
+# Disable automatic queue creation - only use explicitly defined queues in task_queues
+# This prevents workers from creating bindings with default 'celery' routing key
+app.conf.task_create_missing_queues = False
+
 # Configure queues based on environment
 # Use quorum queues in production/staging for HA, regular queues in development
 if APP_ENV in ['prod', 'stage']:
