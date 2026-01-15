@@ -22,7 +22,6 @@ Note: This task is not safe for concurrent execution due to delta-rs limitations
 with MinIO/S3 concurrent writes. Run with concurrency=1.
 """
 
-import io
 import json
 import logging
 import uuid
@@ -348,6 +347,465 @@ def process_delta_lake(self, run_id: str, ticker: str) -> ProcessDeltaLakeResult
             logger.exception("Failed to transition to FAILED state", extra={"run_id": str(run_id)})
         
         raise NonRetryableError(f"Unexpected error: {str(e)}") from e
+
+
+@shared_task(bind=True, base=BaseTask, name='workers.tasks.process_delta_lake_batch_periodic')
+def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
+    """
+    Periodic task that processes batches of stock ingestion runs from the database.
+    
+    This task runs via Celery Beat at configurable intervals (DELTA_PERIOD_INTERVAL).
+    It queries the database for runs in QUEUED_FOR_DELTA state and processes them
+    in batches. Uses `select_for_update(skip_locked=True)` for atomic row locking
+    to ensure each run is processed exactly once.
+    
+    The task:
+    1. Queries database for up to DELTA_BATCH_SIZE runs in QUEUED_FOR_DELTA state
+    2. Downloads and transforms each stock's JSON data
+    3. Combines all DataFrames into a single DataFrame
+    4. Performs a single merge operation to Delta Lake
+    5. Updates all run states using batch_update_run_states()
+    
+    The task runs on queue_for_delta with concurrency=1 to ensure safe Delta Lake merges.
+    Atomic row locking ensures crash safety (prevents processing same items twice).
+    
+    Returns:
+        Dict with batch_size, successful_count, failed_count, and processed_uri
+    """
+    from api.models import StockIngestionRun
+    
+    logger.info("Starting periodic batch Delta Lake processing")
+    
+    service = StockIngestionService()
+    
+    # Track runs that were successfully transitioned to DELTA_RUNNING
+    # This allows us to mark them as FAILED if something goes wrong later
+    # Must be defined outside try block to be accessible in exception handlers
+    runs_in_delta_running = []
+    
+    try:
+        # Get batch size from settings
+        batch_size = settings.DELTA_BATCH_SIZE
+        
+        # Query database for runs in QUEUED_FOR_DELTA state
+        # No need for select_for_update here - service methods handle locking internally
+        # The idempotency check below handles already-processed runs
+        runs = list(
+            StockIngestionRun.objects
+            .select_related('stock')
+            .filter(state=IngestionState.QUEUED_FOR_DELTA)
+            .order_by('queued_for_delta_at')
+            [:batch_size]
+        )
+        
+        if not runs:
+            logger.info("No runs in QUEUED_FOR_DELTA state to process")
+            return {
+                'batch_size': 0,
+                'successful_count': 0,
+                'failed_count': 0
+            }
+        
+        actual_batch_size = len(runs)
+        logger.info(
+            "Retrieved batch from database",
+            extra={
+                "batch_size": actual_batch_size,
+                "run_ids": [str(run.id) for run in runs]
+            }
+        )
+        
+        # Track runs for state updates
+        run_updates = []
+        runs_to_process = []
+        runs_to_transition = []  # Runs that passed validation and need transition to DELTA_RUNNING
+        
+        # Validate runs and collect valid ones for batch transition
+        for run in runs:
+            run_uuid = run.id
+            run_id_str = str(run_uuid)
+            ticker = run.stock.ticker.strip().upper()
+            
+            # Idempotency check: skip if already processed (shouldn't happen due to select_for_update)
+            if run.state in [IngestionState.DELTA_FINISHED, IngestionState.DONE]:
+                logger.debug(
+                    "Run already processed, skipping",
+                    extra={"run_id": run_id_str, "state": run.state}
+                )
+                continue
+            
+            # Must be in QUEUED_FOR_DELTA (should always be true due to filter)
+            if run.state != IngestionState.QUEUED_FOR_DELTA:
+                logger.warning(
+                    "Run in unexpected state for batch processing",
+                    extra={"run_id": run_id_str, "state": run.state}
+                )
+                run_updates.append({
+                    'run_id': run_uuid,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'INVALID_STATE',
+                    'error_message': f'Run is in {run.state} state, cannot process in batch'
+                })
+                continue
+            
+            # Validate raw_data_uri exists
+            if not run.raw_data_uri:
+                logger.warning(
+                    "Run has no raw_data_uri",
+                    extra={"run_id": run_id_str}
+                )
+                run_updates.append({
+                    'run_id': run_uuid,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'MISSING_RAW_DATA',
+                    'error_message': 'No raw_data_uri found for run'
+                })
+                continue
+            
+            # Collect valid run for batch transition to DELTA_RUNNING
+            runs_to_transition.append({
+                'run_id': run_uuid,
+                'new_state': IngestionState.DELTA_RUNNING
+            })
+            
+            # Prepare run info for processing
+            runs_to_process.append({
+                'run_id': run_uuid,
+                'run_id_str': run_id_str,
+                'ticker': ticker,
+                'raw_data_uri': run.raw_data_uri
+            })
+        
+        # Batch transition all valid runs to DELTA_RUNNING
+        if runs_to_transition:
+            logger.info(
+                "Batch transitioning runs to DELTA_RUNNING",
+                extra={"transition_count": len(runs_to_transition)}
+            )
+            
+            batch_result = service.batch_update_run_states(runs_to_transition)
+            
+            # Track successfully transitioned runs
+            for success in batch_result['successful']:
+                runs_in_delta_running.append(success['run_id'])
+            
+            # Handle failed transitions
+            for failure in batch_result['failed']:
+                run_id = failure['run_id']
+                reason = failure['reason']
+                
+                logger.warning(
+                    "Failed to transition run to DELTA_RUNNING in batch",
+                    extra={"run_id": str(run_id), "reason": reason}
+                )
+                
+                run_updates.append({
+                    'run_id': run_id,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'STATE_TRANSITION_ERROR',
+                    'error_message': f'Failed to transition to DELTA_RUNNING: {reason}'
+                })
+                
+                # Remove this run from runs_to_process since it failed transition
+                runs_to_process = [
+                    r for r in runs_to_process 
+                    if str(r['run_id']) != str(run_id)
+                ]
+            
+            logger.info(
+                "Batch transition complete",
+                extra={
+                    "successful_count": len(batch_result['successful']),
+                    "failed_count": len(batch_result['failed'])
+                }
+            )
+        
+        if not runs_to_process:
+            logger.warning("No valid runs to process in batch")
+            # Update failed runs
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            return {
+                'batch_size': actual_batch_size,
+                'successful_count': 0,
+                'failed_count': len(run_updates)
+            }
+        
+        logger.info(
+            "Processing batch",
+            extra={"runs_count": len(runs_to_process)}
+        )
+        
+        # Download and transform all stocks
+        dataframes = []
+        successful_runs = []
+        failed_runs = []
+        
+        for run_info in runs_to_process:
+            run_uuid = run_info['run_id']
+            run_id_str = run_info['run_id_str']
+            ticker = run_info['ticker']
+            raw_data_uri = run_info['raw_data_uri']
+            
+            try:
+                # Download JSON data
+                logger.debug("Downloading raw data", extra={"ticker": ticker, "run_id": run_id_str})
+                json_data = _download_from_storage(raw_data_uri)
+                
+                # Parse and transform
+                data = json.loads(json_data)
+                unified_df = _transform_data_to_polars(data, ticker)
+                
+                dataframes.append(unified_df)
+                successful_runs.append(run_info)
+                
+                logger.debug(
+                    "Transformed data",
+                    extra={"ticker": ticker, "run_id": run_id_str, "rows": len(unified_df)}
+                )
+            
+            except Exception as e:
+                logger.exception(
+                    "Failed to download or transform data",
+                    extra={"ticker": ticker, "run_id": run_id_str}
+                )
+                failed_runs.append({
+                    'run_id': run_uuid,
+                    'run_id_str': run_id_str,
+                    'ticker': ticker,
+                    'error': str(e)
+                })
+        
+        # If all runs failed, mark them as FAILED
+        if not dataframes:
+            logger.error("All runs in batch failed to download/transform")
+            for failed_run in failed_runs:
+                run_updates.append({
+                    'run_id': failed_run['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to download/transform data: {failed_run['error']}"
+                })
+            
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            
+            return {
+                'batch_size': actual_batch_size,
+                'successful_count': 0,
+                'failed_count': len(run_updates)
+            }
+        
+        # Combine all DataFrames
+        logger.info(
+            "Combining DataFrames",
+            extra={"dataframe_count": len(dataframes)}
+        )
+        
+        try:
+            combined_df = _combine_dataframes(dataframes)
+            
+            logger.info(
+                "Combined DataFrames",
+                extra={
+                    "total_rows": len(combined_df),
+                    "columns": len(combined_df.columns)
+                }
+            )
+        except Exception as e:
+            logger.exception("Failed to combine DataFrames")
+            # Mark all runs that were in DELTA_RUNNING as FAILED
+            for run_info in runs_to_process:
+                run_updates.append({
+                    'run_id': run_info['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to combine DataFrames: {str(e)}"
+                })
+            
+            # Also mark failed_runs
+            for failed_run in failed_runs:
+                run_updates.append({
+                    'run_id': failed_run['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to download/transform data: {failed_run['error']}"
+                })
+            
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            
+            raise NonRetryableError(f"Failed to combine DataFrames: {str(e)}") from e
+        
+        # Process unified Delta Lake stocks table
+        try:
+            storage_options = _build_storage_options()
+            processed_uri = _process_stocks_table(
+                "BATCH",  # Use "BATCH" as ticker for logging (multiple tickers in batch)
+                combined_df,
+                storage_options
+            )
+            
+            logger.info(
+                "Successfully processed batch to Delta Lake",
+                extra={
+                    "processed_uri": processed_uri,
+                    "total_rows": len(combined_df)
+                }
+            )
+        
+        except Exception as e:
+            logger.exception("Failed to process batch to Delta Lake")
+            # Mark all runs as FAILED
+            for run_info in successful_runs:
+                run_updates.append({
+                    'run_id': run_info['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'DELTA_LAKE_ERROR',
+                    'error_message': f"Failed to merge batch to Delta Lake: {str(e)}"
+                })
+            
+            for failed_run in failed_runs:
+                run_updates.append({
+                    'run_id': failed_run['run_id'],
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': f"Failed to download/transform data: {failed_run['error']}"
+                })
+            
+            if run_updates:
+                service.batch_update_run_states(run_updates)
+            
+            raise NonRetryableError(f"Failed to process batch to Delta Lake: {str(e)}") from e
+        
+        # Update successful runs to DELTA_FINISHED, then DONE
+        for run_info in successful_runs:
+            run_updates.append({
+                'run_id': run_info['run_id'],
+                'new_state': IngestionState.DELTA_FINISHED,
+                'processed_data_uri': processed_uri
+            })
+        
+        # Update failed runs to FAILED
+        for failed_run in failed_runs:
+            run_updates.append({
+                'run_id': failed_run['run_id'],
+                'new_state': IngestionState.FAILED,
+                'error_code': 'BATCH_PROCESSING_ERROR',
+                'error_message': f"Failed to download/transform data: {failed_run['error']}"
+            })
+        
+        # Batch update all states
+        if run_updates:
+            result = service.batch_update_run_states(run_updates)
+            
+            logger.info(
+                "Batch state update completed",
+                extra={
+                    "successful": len(result['successful']),
+                    "failed": len(result['failed'])
+                }
+            )
+        
+        # Transition successful runs to DONE
+        done_updates = []
+        for run_info in successful_runs:
+            done_updates.append({
+                'run_id': run_info['run_id'],
+                'new_state': IngestionState.DONE
+            })
+        
+        if done_updates:
+            service.batch_update_run_states(done_updates)
+            
+            # Queue metadata update tasks (non-critical, don't fail batch if this fails)
+            try:
+                from workers.tasks.update_stock_metadata import update_stock_metadata
+                
+                # Get unique tickers from successful runs
+                unique_tickers = set(run_info['ticker'] for run_info in successful_runs)
+                for ticker in unique_tickers:
+                    update_stock_metadata.delay(ticker)
+                
+                logger.debug(
+                    "Queued metadata update tasks",
+                    extra={"ticker_count": len(unique_tickers)}
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to queue metadata update tasks",
+                    extra={"error": str(e)}
+                )
+        
+        successful_count = len(successful_runs)
+        failed_count = len(failed_runs)
+        
+        logger.info(
+            "Completed batch Delta Lake processing",
+            extra={
+                "batch_size": actual_batch_size,
+                "successful_count": successful_count,
+                "failed_count": failed_count,
+                "processed_uri": processed_uri
+            }
+        )
+        
+        return {
+            'batch_size': actual_batch_size,
+            'successful_count': successful_count,
+            'failed_count': failed_count,
+            'processed_uri': processed_uri
+        }
+    
+    except NonRetryableError:
+        # NonRetryableError is already handled in the inner try/except blocks
+        # But we need to ensure any runs in DELTA_RUNNING are marked as FAILED
+        if runs_in_delta_running:
+            logger.warning(
+                "Non-retryable error occurred, marking runs in DELTA_RUNNING as FAILED",
+                extra={"run_count": len(runs_in_delta_running)}
+            )
+            cleanup_updates = []
+            for run_uuid in runs_in_delta_running:
+                cleanup_updates.append({
+                    'run_id': run_uuid,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'BATCH_PROCESSING_ERROR',
+                    'error_message': 'Batch processing failed with non-retryable error'
+                })
+            
+            if cleanup_updates:
+                try:
+                    service.batch_update_run_states(cleanup_updates)
+                except Exception:
+                    logger.exception("Failed to update run states to FAILED during cleanup")
+        raise
+    
+    except Exception as e:
+        logger.exception("Unexpected error in periodic batch Delta Lake processing")
+        
+        # Mark all runs that were in DELTA_RUNNING as FAILED
+        if runs_in_delta_running:
+            logger.warning(
+                "Unexpected error occurred, marking runs in DELTA_RUNNING as FAILED",
+                extra={"run_count": len(runs_in_delta_running), "error": str(e)}
+            )
+            cleanup_updates = []
+            for run_uuid in runs_in_delta_running:
+                cleanup_updates.append({
+                    'run_id': run_uuid,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'UNEXPECTED_ERROR',
+                    'error_message': f"Unexpected error in batch processing: {str(e)}"
+                })
+            
+            if cleanup_updates:
+                try:
+                    service.batch_update_run_states(cleanup_updates)
+                except Exception:
+                    logger.exception("Failed to update run states to FAILED during cleanup")
+        
+        raise NonRetryableError(f"Unexpected error in batch processing: {str(e)}") from e
 
 
 def _download_from_storage(data_uri: str) -> bytes:
@@ -797,6 +1255,162 @@ def _process_stocks_table(
             raise DeltaLakeWriteError(
                 f"Failed to create unified stocks table: {str(e)}"
             ) from e
+
+
+def _align_dataframe_schema(df: pl.DataFrame, target_schema: Dict[str, pl.DataType]) -> pl.DataFrame:
+    """
+    Align a DataFrame to a target schema by adding missing columns and casting existing columns.
+    
+    This function ensures that a DataFrame has all columns specified in the target
+    schema with matching types. Missing columns are added with null values of the correct
+    type, and existing columns are cast to match the target schema types.
+    
+    Args:
+        df: DataFrame to align
+        target_schema: Target schema dictionary {column_name: dtype}
+        
+    Returns:
+        DataFrame with all target columns (missing columns filled with nulls, types aligned)
+    """
+    existing_columns = set(df.columns)
+    target_columns = set(target_schema.keys())
+    
+    # Build expressions: cast existing columns and add missing columns
+    expressions = []
+    
+    # Process columns in target schema order
+    for col in target_schema.keys():
+        target_dtype = target_schema[col]
+        
+        if col in existing_columns:
+            # Column exists - cast to target type if needed
+            existing_dtype = df.schema[col]
+            
+            if existing_dtype == target_dtype:
+                # Types match, no casting needed
+                expressions.append(pl.col(col))
+            else:
+                # Need to cast to target type
+                if target_dtype == pl.Float64:
+                    # Cast to Float64 (handles Int64, Int32, Float32, etc.)
+                    expressions.append(pl.col(col).cast(pl.Float64, strict=False).alias(col))
+                elif target_dtype == pl.Utf8 or target_dtype == pl.String:
+                    # Cast to Utf8
+                    expressions.append(pl.col(col).cast(pl.Utf8, strict=False).alias(col))
+                elif target_dtype == pl.Boolean:
+                    # Cast to Boolean
+                    expressions.append(pl.col(col).cast(pl.Boolean, strict=False).alias(col))
+                else:
+                    # Try to cast to target type
+                    expressions.append(pl.col(col).cast(target_dtype, strict=False).alias(col))
+        else:
+            # Column missing - add with null values of correct type
+            if target_dtype == pl.String or target_dtype == pl.Utf8:
+                expressions.append(pl.lit(None, dtype=pl.Utf8).alias(col))
+            elif target_dtype in (pl.Float64, pl.Float32):
+                expressions.append(pl.lit(None, dtype=pl.Float64).alias(col))
+            elif target_dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8):
+                expressions.append(pl.lit(None, dtype=pl.Float64).alias(col))  # Cast to Float64 for consistency
+            elif target_dtype == pl.Boolean:
+                expressions.append(pl.lit(None, dtype=pl.Boolean).alias(col))
+            else:
+                # Default to Utf8 for unknown types
+                expressions.append(pl.lit(None, dtype=pl.Utf8).alias(col))
+    
+    return df.select(expressions)
+
+
+def _combine_dataframes(dataframes: List[pl.DataFrame]) -> pl.DataFrame:
+    """
+    Combine multiple Polars DataFrames with potentially different schemas.
+    
+    This function handles schema differences by:
+    1. Collecting all unique columns from all DataFrames
+    2. Creating a unified schema (resolving type conflicts)
+    3. Aligning each DataFrame to the unified schema
+    4. Combining all aligned DataFrames
+    
+    Args:
+        dataframes: List of Polars DataFrames (may have different schemas)
+        
+    Returns:
+        pl.DataFrame: Combined DataFrame with all rows from input DataFrames
+        
+    Raises:
+        ValueError: If dataframes list is empty
+    """
+    if not dataframes:
+        raise ValueError("Cannot combine empty list of DataFrames")
+    
+    if len(dataframes) == 1:
+        return dataframes[0]
+    
+    # Step 1: Collect all unique columns and their types from all DataFrames
+    unified_schema = {}
+    for df in dataframes:
+        for col, dtype in df.schema.items():
+            if col not in unified_schema:
+                unified_schema[col] = dtype
+            else:
+                # Resolve type conflicts - prefer more general types
+                existing_dtype = unified_schema[col]
+                
+                # Prefer Float64 over Int64/Int32 (for numeric consistency)
+                if existing_dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8, 
+                                     pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8):
+                    if dtype == pl.Float64:
+                        unified_schema[col] = pl.Float64
+                    elif dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8,
+                                  pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8):
+                        # Both are integers, keep existing (or prefer Int64)
+                        if existing_dtype != pl.Int64 and dtype == pl.Int64:
+                            unified_schema[col] = pl.Int64
+                
+                # Prefer Utf8/String over other types for text
+                elif existing_dtype != pl.Utf8 and dtype == pl.Utf8:
+                    unified_schema[col] = pl.Utf8
+                elif existing_dtype == pl.Utf8 and dtype != pl.Utf8:
+                    # Keep Utf8
+                    pass
+                
+                # Prefer Float64 over Float32
+                elif existing_dtype == pl.Float32 and dtype == pl.Float64:
+                    unified_schema[col] = pl.Float64
+    
+    # Step 2: Align each DataFrame to the unified schema
+    aligned_dataframes = []
+    for idx, df in enumerate(dataframes):
+        try:
+            aligned_df = _align_dataframe_schema(df, unified_schema)
+            aligned_dataframes.append(aligned_df)
+        except Exception as e:
+            logger.error(
+                "Failed to align DataFrame schema",
+                extra={
+                    "dataframe_index": idx,
+                    "error": str(e),
+                    "dataframe_columns": df.columns,
+                    "target_columns": list(unified_schema.keys())
+                }
+            )
+            raise InvalidDataFormatError(
+                f"Failed to align DataFrame at index {idx} to unified schema: {str(e)}"
+            ) from e
+    
+    # Step 3: Now all DataFrames have the same schema, can safely concat
+    combined_df = pl.concat(aligned_dataframes, how='vertical')
+    
+    logger.info(
+        "Combined DataFrames with schema alignment",
+        extra={
+            "dataframe_count": len(dataframes),
+            "total_rows": len(combined_df),
+            "total_columns": len(combined_df.columns),
+            "unified_schema_size": len(unified_schema)
+        }
+    )
+    
+    return combined_df
 
 
 def _transition_to_failed(

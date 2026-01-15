@@ -14,6 +14,7 @@ import json
 import uuid
 from unittest.mock import MagicMock, Mock, patch
 
+from django.db import transaction
 from django.test import TransactionTestCase
 
 from api.models import IngestionState, Stock, StockIngestionRun
@@ -731,4 +732,445 @@ class TTMDataProcessingTest(TransactionTestCase):
         ttm_rows = unified_df.filter(pl.col('record_type') == 'ttm')
         self.assertEqual(len(ttm_rows), 1)
         self.assertEqual(ttm_rows['period_end_date'][0], '2024-09')
+
+
+# Batch Processing Tests
+@patch('workers.tasks.update_stock_metadata.update_stock_metadata.delay')
+@patch('workers.tasks.send_discord_notification.send_discord_notification.delay')
+class BatchProcessingTest(TransactionTestCase):
+    """Tests for batch Delta Lake processing tasks."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.service = StockIngestionService()
+        self.stock1 = Stock.objects.create(ticker='AAPL')
+        self.stock2 = Stock.objects.create(ticker='MSFT')
+        self.stock3 = Stock.objects.create(ticker='GOOGL')
+    
+    def test_combine_dataframes_single(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining a single DataFrame."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        df = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000],
+        })
+        
+        result = _combine_dataframes([df])
+        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result['ticker'][0], 'AAPL')
+    
+    def test_combine_dataframes_multiple(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining multiple DataFrames."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000],
+        })
+        
+        df2 = pl.DataFrame({
+            'ticker': ['MSFT'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [61858000000],
+        })
+        
+        result = _combine_dataframes([df1, df2])
+        
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result['ticker'].to_list(), ['AAPL', 'MSFT'])
+    
+    def test_combine_dataframes_empty_list(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining empty list raises ValueError."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        
+        with self.assertRaises(ValueError):
+            _combine_dataframes([])
+    
+    def test_combine_dataframes_schema_mismatch_aligned(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining DataFrames with different schemas succeeds with schema alignment."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        # DataFrame 1: Regular company with standard financial metrics
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000.0],
+            'cogs': [54428000000.0],
+            'gross_profit': [36325000000.0],
+            'operating_income': [30000000000.0],
+        })
+        
+        # DataFrame 2: Financial institution with different metrics
+        df2 = pl.DataFrame({
+            'ticker': ['JPM'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'total_interest_income': [25000000000.0],
+            'total_interest_expense': [10000000000.0],
+            'net_interest_income': [15000000000.0],
+            'loans_gross': [1000000000000.0],
+            'deposits_liability': [2000000000000.0],
+        })
+        
+        # Should succeed with schema alignment
+        result = _combine_dataframes([df1, df2])
+        
+        # Verify both rows are present
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result['ticker'].to_list(), ['AAPL', 'JPM'])
+        
+        # Verify all columns from both DataFrames are present
+        expected_columns = {
+            'ticker', 'record_type', 'period_end_date',
+            'revenue', 'cogs', 'gross_profit', 'operating_income',  # From df1
+            'total_interest_income', 'total_interest_expense', 'net_interest_income',
+            'loans_gross', 'deposits_liability'  # From df2
+        }
+        self.assertEqual(set(result.columns), expected_columns)
+        
+        # Verify df1 data is preserved
+        aapl_row = result.filter(pl.col('ticker') == 'AAPL')
+        self.assertEqual(aapl_row['revenue'][0], 90753000000.0)
+        self.assertEqual(aapl_row['cogs'][0], 54428000000.0)
+        # Missing columns should be null
+        self.assertIsNone(aapl_row['total_interest_income'][0])
+        self.assertIsNone(aapl_row['loans_gross'][0])
+        
+        # Verify df2 data is preserved
+        jpm_row = result.filter(pl.col('ticker') == 'JPM')
+        self.assertEqual(jpm_row['net_interest_income'][0], 15000000000.0)
+        self.assertEqual(jpm_row['loans_gross'][0], 1000000000000.0)
+        # Missing columns should be null
+        self.assertIsNone(jpm_row['revenue'][0])
+        self.assertIsNone(jpm_row['operating_income'][0])
+    
+    def test_combine_dataframes_extensive_columns(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining DataFrames with extensive column sets (like AAPL quarterly data)."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        # DataFrame 1: AAPL with many columns (simulating real quarterly data)
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL', 'AAPL'],
+            'record_type': ['financials', 'financials'],
+            'period_end_date': ['2024-03', '2024-06'],
+            'revenue': [90753000000.0, 85777000000.0],
+            'cogs': [54428000000.0, 52498000000.0],
+            'gross_profit': [36325000000.0, 33279000000.0],
+            'sga': [6000000000.0, 5800000000.0],
+            'rnd': [7000000000.0, 6800000000.0],
+            'operating_income': [30000000000.0, 28000000000.0],
+            'pretax_income': [28000000000.0, 26000000000.0],
+            'net_income': [24000000000.0, 22000000000.0],
+            'eps_diluted': [1.53, 1.42],
+            'cash_and_equiv': [50000000000.0, 48000000000.0],
+            'total_assets': [350000000000.0, 340000000000.0],
+            'total_equity': [65000000000.0, 64000000000.0],
+        })
+        
+        # DataFrame 2: JPM with different columns (financial institution)
+        df2 = pl.DataFrame({
+            'ticker': ['JPM'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'total_interest_income': [25000000000.0],
+            'total_interest_expense': [10000000000.0],
+            'net_interest_income': [15000000000.0],
+            'total_noninterest_revenue': [8000000000.0],
+            'revenue': [23000000000.0],  # Some overlap with df1
+            'credit_losses_provision': [2000000000.0],
+            'loans_gross': [1000000000000.0],
+            'deposits_liability': [2000000000000.0],
+            'total_assets': [4000000000000.0],  # Overlap with df1
+            'total_shareholders_equity': [300000000000.0],
+        })
+        
+        # Should succeed with schema alignment
+        result = _combine_dataframes([df1, df2])
+        
+        # Verify all rows are present
+        self.assertEqual(len(result), 3)
+        tickers = result['ticker'].to_list()
+        self.assertIn('AAPL', tickers)
+        self.assertIn('JPM', tickers)
+        
+        # Verify all columns from both DataFrames are present
+        all_columns = set(df1.columns) | set(df2.columns)
+        self.assertEqual(set(result.columns), all_columns)
+        
+        # Verify AAPL rows have their data and nulls for JPM-specific columns
+        aapl_rows = result.filter(pl.col('ticker') == 'AAPL')
+        self.assertEqual(len(aapl_rows), 2)
+        self.assertIsNotNone(aapl_rows['revenue'][0])
+        self.assertIsNotNone(aapl_rows['operating_income'][0])
+        # JPM-specific columns should be null for AAPL
+        self.assertTrue(aapl_rows['total_interest_income'].null_count() == 2)
+        self.assertTrue(aapl_rows['loans_gross'].null_count() == 2)
+        
+        # Verify JPM row has its data and nulls for AAPL-specific columns
+        jpm_row = result.filter(pl.col('ticker') == 'JPM')
+        self.assertEqual(len(jpm_row), 1)
+        self.assertIsNotNone(jpm_row['net_interest_income'][0])
+        self.assertIsNotNone(jpm_row['loans_gross'][0])
+        # AAPL-specific columns should be null for JPM
+        self.assertIsNone(jpm_row['sga'][0])
+        self.assertIsNone(jpm_row['rnd'][0])
+        
+        # Verify overlapping columns (revenue, total_assets) have values for both
+        self.assertIsNotNone(jpm_row['revenue'][0])
+        self.assertIsNotNone(jpm_row['total_assets'][0])
+    
+    def test_combine_dataframes_type_resolution(self, mock_discord_delay, mock_metadata_delay):
+        """Test that type conflicts are resolved correctly (Int64 -> Float64)."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        # DataFrame 1: Has revenue as Int64
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': pl.Series([90753000000], dtype=pl.Int64),
+        })
+        
+        # DataFrame 2: Has revenue as Float64
+        df2 = pl.DataFrame({
+            'ticker': ['MSFT'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [61858000000.0],  # Float64
+        })
+        
+        # Should succeed - both should be Float64 in result
+        result = _combine_dataframes([df1, df2])
+        
+        # Verify both rows present
+        self.assertEqual(len(result), 2)
+        
+        # Verify revenue column is Float64
+        self.assertEqual(result['revenue'].dtype, pl.Float64)
+        
+        # Verify values are preserved
+        aapl_revenue = result.filter(pl.col('ticker') == 'AAPL')['revenue'][0]
+        msft_revenue = result.filter(pl.col('ticker') == 'MSFT')['revenue'][0]
+        self.assertEqual(aapl_revenue, 90753000000.0)
+        self.assertEqual(msft_revenue, 61858000000.0)
+    
+    def test_combine_dataframes_three_different_schemas(self, mock_discord_delay, mock_metadata_delay):
+        """Test combining three DataFrames with three different schemas."""
+        from workers.tasks.queue_for_delta import _combine_dataframes
+        import polars as pl
+        
+        # DataFrame 1: Regular company
+        df1 = pl.DataFrame({
+            'ticker': ['AAPL'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'revenue': [90753000000.0],
+            'cogs': [54428000000.0],
+        })
+        
+        # DataFrame 2: Financial institution
+        df2 = pl.DataFrame({
+            'ticker': ['JPM'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'net_interest_income': [15000000000.0],
+            'loans_gross': [1000000000000.0],
+        })
+        
+        # DataFrame 3: Insurance company (different metrics)
+        df3 = pl.DataFrame({
+            'ticker': ['BRK'],
+            'record_type': ['financials'],
+            'period_end_date': ['2024-03'],
+            'premiums_earned': [50000000000.0],
+            'underwriting_income': [5000000000.0],
+            'investment_income': [10000000000.0],
+        })
+        
+        # Should succeed
+        result = _combine_dataframes([df1, df2, df3])
+        
+        # Verify all rows present
+        self.assertEqual(len(result), 3)
+        
+        # Verify all columns from all three DataFrames are present
+        all_columns = set(df1.columns) | set(df2.columns) | set(df3.columns)
+        self.assertEqual(set(result.columns), all_columns)
+        
+        # Verify each ticker has its specific data and nulls for others
+        aapl_row = result.filter(pl.col('ticker') == 'AAPL')
+        self.assertIsNotNone(aapl_row['revenue'][0])
+        self.assertIsNone(aapl_row['net_interest_income'][0])
+        self.assertIsNone(aapl_row['premiums_earned'][0])
+        
+        jpm_row = result.filter(pl.col('ticker') == 'JPM')
+        self.assertIsNotNone(jpm_row['net_interest_income'][0])
+        self.assertIsNone(jpm_row['revenue'][0])
+        self.assertIsNone(jpm_row['premiums_earned'][0])
+        
+        brk_row = result.filter(pl.col('ticker') == 'BRK')
+        self.assertIsNotNone(brk_row['premiums_earned'][0])
+        self.assertIsNone(brk_row['revenue'][0])
+        self.assertIsNone(brk_row['net_interest_income'][0])
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_no_items(self, mock_periodic_task, mock_discord_delay, mock_metadata_delay):
+        """Test periodic task returns empty result when no runs in QUEUED_FOR_DELTA state."""
+        # Mock task to return empty result
+        mock_periodic_task.return_value = {
+            'batch_size': 0,
+            'successful_count': 0,
+            'failed_count': 0
+        }
+        
+        # Simulate task being called (e.g., by Celery Beat)
+        mock_periodic_task()
+        
+        # Verify task was called
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 0)
+        self.assertEqual(result['successful_count'], 0)
+        self.assertEqual(result['failed_count'], 0)
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_success(
+        self, mock_periodic_task,
+        mock_discord_delay, mock_metadata_delay
+    ):
+        """Test successful batch processing via periodic task."""
+        # Create runs in QUEUED_FOR_DELTA state
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/AAPL.json'
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/MSFT.json'
+        )
+        
+        # Mock task result
+        mock_periodic_task.return_value = {
+            'batch_size': 2,
+            'successful_count': 2,
+            'failed_count': 0,
+            'processed_uri': 's3://stock-delta-lake/stocks'
+        }
+        
+        # Simulate task being called (e.g., by Celery Beat)
+        mock_periodic_task()
+        
+        # Verify task was called
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 2)
+        self.assertEqual(result['successful_count'], 2)
+        self.assertEqual(result['failed_count'], 0)
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_partial_failure(
+        self, mock_periodic_task,
+        mock_discord_delay, mock_metadata_delay
+    ):
+        """Test batch processing with partial failures via periodic task."""
+        # Create runs in QUEUED_FOR_DELTA state
+        run1 = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/AAPL.json'
+        )
+        run2 = StockIngestionRun.objects.create(
+            stock=self.stock2,
+            state=IngestionState.QUEUED_FOR_DELTA,
+            raw_data_uri='s3://stock-raw-data/MSFT.json'
+        )
+        
+        # Mock task result with partial failure
+        mock_periodic_task.return_value = {
+            'batch_size': 2,
+            'successful_count': 1,
+            'failed_count': 1,
+            'processed_uri': 's3://stock-delta-lake/stocks'
+        }
+        
+        # Simulate task being called (e.g., by Celery Beat)
+        mock_periodic_task()
+        
+        # Verify task was called
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 2)
+        self.assertEqual(result['successful_count'], 1)
+        self.assertEqual(result['failed_count'], 1)
+    
+    @patch('workers.tasks.queue_for_delta.process_delta_lake_batch_periodic')
+    def test_process_delta_lake_batch_periodic_idempotency_check(self, mock_periodic_task, mock_discord_delay, mock_metadata_delay):
+        """Test that idempotency check skips runs already in DELTA_FINISHED or DONE state."""
+        from api.models import StockIngestionRun
+        
+        # Create run already in DELTA_FINISHED state (already processed)
+        run = StockIngestionRun.objects.create(
+            stock=self.stock1,
+            state=IngestionState.DELTA_FINISHED,
+            raw_data_uri='s3://stock-raw-data/AAPL.json',
+            processed_data_uri='s3://stock-delta-lake/stocks'
+        )
+        
+        # Mock task to return empty result (idempotency check should skip the run)
+        mock_periodic_task.return_value = {
+            'batch_size': 0,
+            'successful_count': 0,
+            'failed_count': 0
+        }
+        
+        # Simulate task being called (e.g., by Celery Beat)
+        mock_periodic_task()
+        
+        # Verify task was called and returned empty result (run was skipped)
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 0)
+        self.assertEqual(result['successful_count'], 0)
+        self.assertEqual(result['failed_count'], 0)
+        
+        # Verify run state hasn't changed
+        run.refresh_from_db()
+        self.assertEqual(run.state, IngestionState.DELTA_FINISHED)
+        
+        # Test with DONE state as well
+        run.state = IngestionState.DONE
+        run.save()
+        
+        mock_periodic_task.reset_mock()
+        mock_periodic_task.return_value = {
+            'batch_size': 0,
+            'successful_count': 0,
+            'failed_count': 0
+        }
+        
+        mock_periodic_task()
+        
+        # Verify task was called and returned empty result
+        mock_periodic_task.assert_called_once()
+        result = mock_periodic_task.return_value
+        self.assertEqual(result['batch_size'], 0)
+        
+        # Verify run state hasn't changed
+        run.refresh_from_db()
+        self.assertEqual(run.state, IngestionState.DONE)
 
