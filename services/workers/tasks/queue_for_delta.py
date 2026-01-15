@@ -418,8 +418,9 @@ def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
         # Track runs for state updates
         run_updates = []
         runs_to_process = []
+        runs_to_transition = []  # Runs that passed validation and need transition to DELTA_RUNNING
         
-        # Validate runs and transition to DELTA_RUNNING
+        # Validate runs and collect valid ones for batch transition
         for run in runs:
             run_uuid = run.id
             run_id_str = str(run_uuid)
@@ -461,33 +462,63 @@ def process_delta_lake_batch_periodic(self) -> Dict[str, Any]:
                 })
                 continue
             
-            # Transition to DELTA_RUNNING
-            try:
-                service.update_run_state(
-                    run_id=run_uuid,
-                    new_state=IngestionState.DELTA_RUNNING
-                )
-                # Track this run as successfully transitioned to DELTA_RUNNING
-                runs_in_delta_running.append(run_uuid)
-            except Exception as e:
-                logger.warning(
-                    "Failed to transition run to DELTA_RUNNING",
-                    extra={"run_id": run_id_str, "error": str(e)}
-                )
-                run_updates.append({
-                    'run_id': run_uuid,
-                    'new_state': IngestionState.FAILED,
-                    'error_code': 'STATE_TRANSITION_ERROR',
-                    'error_message': f'Failed to transition to DELTA_RUNNING: {str(e)}'
-                })
-                continue
+            # Collect valid run for batch transition to DELTA_RUNNING
+            runs_to_transition.append({
+                'run_id': run_uuid,
+                'new_state': IngestionState.DELTA_RUNNING
+            })
             
+            # Prepare run info for processing
             runs_to_process.append({
                 'run_id': run_uuid,
                 'run_id_str': run_id_str,
                 'ticker': ticker,
                 'raw_data_uri': run.raw_data_uri
             })
+        
+        # Batch transition all valid runs to DELTA_RUNNING
+        if runs_to_transition:
+            logger.info(
+                "Batch transitioning runs to DELTA_RUNNING",
+                extra={"transition_count": len(runs_to_transition)}
+            )
+            
+            batch_result = service.batch_update_run_states(runs_to_transition)
+            
+            # Track successfully transitioned runs
+            for success in batch_result['successful']:
+                runs_in_delta_running.append(success['run_id'])
+            
+            # Handle failed transitions
+            for failure in batch_result['failed']:
+                run_id = failure['run_id']
+                reason = failure['reason']
+                
+                logger.warning(
+                    "Failed to transition run to DELTA_RUNNING in batch",
+                    extra={"run_id": str(run_id), "reason": reason}
+                )
+                
+                run_updates.append({
+                    'run_id': run_id,
+                    'new_state': IngestionState.FAILED,
+                    'error_code': 'STATE_TRANSITION_ERROR',
+                    'error_message': f'Failed to transition to DELTA_RUNNING: {reason}'
+                })
+                
+                # Remove this run from runs_to_process since it failed transition
+                runs_to_process = [
+                    r for r in runs_to_process 
+                    if str(r['run_id']) != str(run_id)
+                ]
+            
+            logger.info(
+                "Batch transition complete",
+                extra={
+                    "successful_count": len(batch_result['successful']),
+                    "failed_count": len(batch_result['failed'])
+                }
+            )
         
         if not runs_to_process:
             logger.warning("No valid runs to process in batch")
