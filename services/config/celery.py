@@ -35,10 +35,17 @@ if APP_ENV in ['prod', 'stage']:
     # Configure quorum queues for high availability
     # Each queue is explicitly defined as a quorum queue for production HA deployment
     # Quorum queues provide better data safety and fault tolerance in RabbitMQ clusters
+    # Explicit routing_key ensures consistent routing between publishers and consumers
     app.conf.task_queues = (
-        Queue('queue_for_fetch', queue_arguments={'x-queue-type': 'quorum'}),
-        Queue('queue_for_delta', queue_arguments={'x-queue-type': 'quorum'}),
-        Queue('send_discord_notifications', queue_arguments={'x-queue-type': 'quorum'}),
+        Queue('queue_for_fetch', 
+              routing_key='queue_for_fetch',
+              queue_arguments={'x-queue-type': 'quorum'}),
+        Queue('queue_for_delta', 
+              routing_key='queue_for_delta',
+              queue_arguments={'x-queue-type': 'quorum'}),
+        Queue('send_discord_notifications', 
+              routing_key='send_discord_notifications',
+              queue_arguments={'x-queue-type': 'quorum'}),
     )
     
     # Enable publisher confirms (required for quorum queues)
@@ -48,11 +55,11 @@ if APP_ENV in ['prod', 'stage']:
     }
 else:
     # Use regular queues in development
-    # No explicit queue configuration needed - Celery will use default classic queues
+    # Explicit routing_key ensures consistent routing between publishers and consumers
     app.conf.task_queues = (
-        Queue('queue_for_fetch'),
-        Queue('queue_for_delta'),
-        Queue('send_discord_notifications'),
+        Queue('queue_for_fetch', routing_key='queue_for_fetch'),
+        Queue('queue_for_delta', routing_key='queue_for_delta'),
+        Queue('send_discord_notifications', routing_key='send_discord_notifications'),
     )
 
 # Configure task routing to separate queues
